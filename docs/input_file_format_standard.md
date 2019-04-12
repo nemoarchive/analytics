@@ -38,6 +38,6 @@ IDxxxx_COLmeta_DIMRED_PCA.tab - Description needed
 IDxxxx_ROWmeta_DIMRED_PCA.tab - Description needed
 IDxxxx_DIMREDmeta_PCA.tab - Description needed
 
-The bundle of these 3 files will be in the format of ```<file_prefix>-<analysis>.tab.counts.tar```.  In the above examples, IDxxxx would be the \<file_prefix\> and PCA would be the \<analysis\>.
+The bundle of these 3 files will be in the format of ```<file_prefix>-<analysis>.tab.analysis.tar```.  In the above examples, IDxxxx would be the \<file_prefix\> and PCA would be the \<analysis\>.
 
 The extraction of the tarball with tab format will look like this:
