@@ -17,7 +17,7 @@ The 'incoming' directory tree root is:
 
     /local/projects-t3/NEMO/incoming
 
-The diff file for incoming is generated Tuesday morning at 12:05 AM.  The diff filename will be in the format of "<project>-YYYY-MM-DD.diff" where <project> either "BICCN", "BICCN", or "other".
+The diff file for incoming is generated Tuesday morning at 12:05 AM.  The diff filename will be in the format of ```<project>-YYYY-MM-DD.diff``` where \<project\> is either "BICCN", "BICCN", or "other".
 
 ## DMZ
 
@@ -25,7 +25,7 @@ The 'DMZ' directory tree root is:
 
     /local/projects-t3/NEMO/dmz
 
-The diff file for incoming is generated Thursday morning at 12:05 AM. The diff filename will be in the format of "dmz-<project>-YYYY-MM-DD.diff" where <project> either "BICCN", "BICCN", or "other".
+The diff file for incoming is generated Thursday morning at 12:05 AM. The diff filename will be in the format of ```dmz-<project>-YYYY-MM-DD.diff``` where \<project\> is either "BICCN", "BICCN", or "other".
 
 Only data in the dmz will be ingested for gEAR.
 
