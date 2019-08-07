@@ -10,6 +10,15 @@ validation, convert to H5AD, then push to the cloud node for import by a gEAR in
 import argparse
 import os
 import uuid
+from gear.datasetuploader import FileType, DatasetUploader
+import gear.mexuploader
+from gear.metadatauploader import MetadataUploader
+import pandas
+import tarfile
+import json
+import ntpath
+import csv
+import itertools
 
 def main():
     parser = argparse.ArgumentParser( description='NeMO data processor for gEAR')
@@ -18,12 +27,10 @@ def main():
     parser.add_argument('-ob', '--output_base', type=str, required=True, help='Path to a local output directory where files can be written while processing' )
     args = parser.parse_args()
 
-    files_pending = get_datasets_to_process(args.input_log_base)
-
+    files_pending = get_datasets_to_process(args.input_log_base, args.output_base)
     for file_path in files_pending:
         dataset_id = uuid.uuid4()
         dataset_dir = extract_dataset(file_path, args.output_base)
-
         metadata_file_path = get_metadata_file(dataset_dir)
         metadata_is_valid  = validate_metadata_file(metadata_file_path)
         
@@ -86,9 +93,18 @@ def extract_dataset(input_file_path, output_base):
                                                    ./DLPFCcon322polyAgeneLIBD_EXPmeta.json
            Returns: /path/to/DLPFCcon322polyAgeneLIBD
     """
-    return ""
-                
-def get_datasets_to_process(base_dir):
+    tar = tarfile.open(input_file_path)
+    tar.extractall(path= output_base)
+    tar.close()
+    tar_name = ntpath.basename(input_file_path).split('.',1)[0]
+    tar_path = os.path.normpath(output_base+"/"+tar_name)
+    if(os.path.isdir(tar_path)):
+        print("Extraction sucessful")
+    else:
+        print("Path returned was incorrect or extraction failed")
+    return tar_path
+
+def get_datasets_to_process(base_dir, output_base):
     """
     Input: A base directory with log files to process. 
 
@@ -99,7 +115,17 @@ def get_datasets_to_process(base_dir):
 
          Where the contents of these match the specification in docs/input_file_format_standard.md
     """
-    return []
+    array = ['mex','MEX', 'TABcounts', 'TABanalysis']
+    log_file_list = os.listdir(base_dir)
+    log_file_list = prepend(log_file_list, base_dir)
+    for logfile in log_file_list:
+        fname=os.path.splitext(ntpath.basename(logfile))[0]
+        output=os.path.normpath(output_base +"/"+fname+".new")
+        read_log_file = pandas.read_csv(logfile, sep="\t")
+        hold_relevant_entries =read_log_file.loc[read_log_file['Type'].isin(array)]
+        paths_to_return = hold_relevant_entries['Output Dir'] +"/"+ hold_relevant_entries['Output file']
+        paths_to_return.to_csv(output, sep="\t", quoting=csv.QUOTE_NONE, index=False, header=False)
+    return paths_to_return
 
 def get_metadata_file(base_dir):
     """
@@ -108,6 +134,7 @@ def get_metadata_file(base_dir):
     Output: The full path to the file which appears to be the metadata file,
            whether that's an xls or json file
     """
+    
     return ""
 
 def validate_metadata_file(file_path):
@@ -128,6 +155,16 @@ def upload_to_cloud(h5_path, metadata_json_path):
     # These could be made configurable
     gcloud_project = 'nemo-analytics'
     gcloud_instance = 'nemo-prod-201904'
+
+def prepend(list, str):
+    """
+    Input: List of files in the input directory and path to input directory
+
+    Output: List of full paths to log files in input directory
+    """
+    str += '{0}'
+    list = [str.format(i) for i in list] 
+    return(list)
 
 if __name__ == '__main__':
     main()
