@@ -115,16 +115,19 @@ def get_datasets_to_process(base_dir, output_base):
 
          Where the contents of these match the specification in docs/input_file_format_standard.md
     """
-    array = ['mex','MEX', 'TABcounts', 'TABanalysis']
+    formats = ['mex','MEX', 'TABcounts', 'TABanalysis']
     log_file_list = os.listdir(base_dir)
     log_file_list = prepend(log_file_list, base_dir)
+    paths_to_return = []
+    
     for logfile in log_file_list:
-        fname=os.path.splitext(ntpath.basename(logfile))[0]
-        output=os.path.normpath(output_base +"/"+fname+".new")
+        fname = os.path.splitext(ntpath.basename(logfile))[0]
+        output = os.path.normpath(output_base + "/" + fname + ".new")
         read_log_file = pandas.read_csv(logfile, sep="\t")
-        hold_relevant_entries =read_log_file.loc[read_log_file['Type'].isin(array)]
-        paths_to_return = hold_relevant_entries['Output Dir'] +"/"+ hold_relevant_entries['Output file']
-        paths_to_return.to_csv(output, sep="\t", quoting=csv.QUOTE_NONE, index=False, header=False)
+        hold_relevant_entries = read_log_file.loc[read_log_file['Type'].isin(formats)]
+        paths_to_return.append(hold_relevant_entries['Output Dir'] + "/" + hold_relevant_entries['Output file'])
+        #paths_to_return.to_csv(output, sep="\t", quoting=csv.QUOTE_NONE, index=False, header=False)
+        
     return paths_to_return
 
 def get_metadata_file(base_dir):
@@ -136,6 +139,16 @@ def get_metadata_file(base_dir):
     """
     
     return ""
+
+def prepend(list, str):
+    """
+    Input: List of files in the input directory and path to input directory
+
+    Output: List of full paths to log files in input directory
+    """
+    str += '{0}'
+    list = [str.format(i) for i in list] 
+    return(list)
 
 def validate_metadata_file(file_path):
     """
@@ -155,16 +168,6 @@ def upload_to_cloud(h5_path, metadata_json_path):
     # These could be made configurable
     gcloud_project = 'nemo-analytics'
     gcloud_instance = 'nemo-prod-201904'
-
-def prepend(list, str):
-    """
-    Input: List of files in the input directory and path to input directory
-
-    Output: List of full paths to log files in input directory
-    """
-    str += '{0}'
-    list = [str.format(i) for i in list] 
-    return(list)
 
 if __name__ == '__main__':
     main()
