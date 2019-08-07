@@ -98,10 +98,10 @@ def extract_dataset(input_file_path, output_base):
     tar.close()
     tar_name = ntpath.basename(input_file_path).split('.',1)[0]
     tar_path = os.path.normpath(output_base+"/"+tar_name)
-    if(os.path.isdir(tar_path)):
-        print("Extraction sucessful")
-    else:
-        print("Path returned was incorrect or extraction failed")
+    
+    if not os.path.isdir(tar_path):
+        raise Exception("Path returned was incorrect or extraction failed: {0}".format(input_file_path))
+        
     return tar_path
 
 def get_datasets_to_process(base_dir, output_base):
