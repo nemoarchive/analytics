@@ -18,6 +18,7 @@ import tarfile
 import json
 import ntpath
 import csv
+import itertools
 
 def main():
     parser = argparse.ArgumentParser( description='NeMO data processor for gEAR')
@@ -27,11 +28,9 @@ def main():
     args = parser.parse_args()
 
     files_pending = get_datasets_to_process(args.input_log_base, args.output_base)
-
     for file_path in files_pending:
         dataset_id = uuid.uuid4()
         dataset_dir = extract_dataset(file_path, args.output_base)
-
         metadata_file_path = get_metadata_file(dataset_dir)
         metadata_is_valid  = validate_metadata_file(metadata_file_path)
         
@@ -94,8 +93,17 @@ def extract_dataset(input_file_path, output_base):
                                                    ./DLPFCcon322polyAgeneLIBD_EXPmeta.json
            Returns: /path/to/DLPFCcon322polyAgeneLIBD
     """
-    return ""
-                
+    tar = tarfile.open(input_file_path)
+    tar.extractall(path= output_base)
+    tar.close()
+    tar_name = ntpath.basename(input_file_path).split('.',1)[0]
+    tar_path = os.path.normpath(output_base+"/"+tar_name)
+    if(os.path.isdir(tar_path)):
+        print("Extraction sucessful")
+    else:
+        print("Path returned was incorrect or extraction failed")
+    return tar_path
+
 def get_datasets_to_process(base_dir, output_base):
     """
     Input: A base directory with log files to process. 
@@ -117,7 +125,7 @@ def get_datasets_to_process(base_dir, output_base):
         hold_relevant_entries =read_log_file.loc[read_log_file['Type'].isin(array)]
         paths_to_return = hold_relevant_entries['Output Dir'] +"/"+ hold_relevant_entries['Output file']
         paths_to_return.to_csv(output, sep="\t", quoting=csv.QUOTE_NONE, index=False, header=False)
-    return [paths_to_return]
+    return paths_to_return
 
 def get_metadata_file(base_dir):
     """
@@ -126,6 +134,7 @@ def get_metadata_file(base_dir):
     Output: The full path to the file which appears to be the metadata file,
            whether that's an xls or json file
     """
+    
     return ""
 
 def validate_metadata_file(file_path):
@@ -148,6 +157,11 @@ def upload_to_cloud(h5_path, metadata_json_path):
     gcloud_instance = 'nemo-prod-201904'
 
 def prepend(list, str):
+    """
+    Input: List of files in the input directory and path to input directory
+
+    Output: List of full paths to log files in input directory
+    """
     str += '{0}'
     list = [str.format(i) for i in list] 
     return(list)
