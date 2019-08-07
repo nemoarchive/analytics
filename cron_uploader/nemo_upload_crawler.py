@@ -48,7 +48,7 @@ def convert_to_h5ad(dataset_dir, dataset_id):
     """
     return ""
 
-def create_metadata_json(input_file_path, dataset_id)
+def create_metadata_json(input_file_path, dataset_id):
     """
     Input: A metadata file in XLS or JSON format, validated.
  
