@@ -98,10 +98,8 @@ def extract_dataset(input_file_path, output_base):
     tar.close()
     tar_name = ntpath.basename(input_file_path).split('.',1)[0]
     tar_path = os.path.normpath(output_base+"/"+tar_name)
-    
     if not os.path.isdir(tar_path):
         raise Exception("Path returned was incorrect or extraction failed: {0}".format(input_file_path))
-        
     return tar_path
 
 def get_datasets_to_process(base_dir, output_base):
@@ -119,15 +117,14 @@ def get_datasets_to_process(base_dir, output_base):
     log_file_list = os.listdir(base_dir)
     log_file_list = prepend(log_file_list, base_dir)
     paths_to_return = []
-    
     for logfile in log_file_list:
         fname = os.path.splitext(ntpath.basename(logfile))[0]
         output = os.path.normpath(output_base + "/" + fname + ".new")
-        read_log_file = pandas.read_csv(logfile, sep="\t")
+        read_log_file = pandas.read_csv(logfile, sep="\t", header=0)
         hold_relevant_entries = read_log_file.loc[read_log_file['Type'].isin(formats)]
-        paths_to_return.append(hold_relevant_entries['Output Dir'] + "/" + hold_relevant_entries['Output file'])
-        #paths_to_return.to_csv(output, sep="\t", quoting=csv.QUOTE_NONE, index=False, header=False)
-        
+        for entry in hold_relevant_entries.index:
+            tar_path = hold_relevant_entries['Output Dir'][entry] + "/" + hold_relevant_entries['Output file'][entry]
+            paths_to_return.append(tar_path)
     return paths_to_return
 
 def get_metadata_file(base_dir):
@@ -137,8 +134,12 @@ def get_metadata_file(base_dir):
     Output: The full path to the file which appears to be the metadata file,
            whether that's an xls or json file
     """
-    
-    return ""
+    file_list = os.listdir(base_dir) 
+    metadata_f = False
+    for filename in file_list:
+        if "_EXPmeta" in filename:
+            metadata_f = os.path.normpath(base_dir+"/"+filename)
+    return metadata_f
 
 def prepend(list, str):
     """
@@ -156,7 +157,15 @@ def validate_metadata_file(file_path):
     
     Output: Returns True/False reflecting the validation of the metadata file. This should
            include checking required parameters and general formatting of the file.
+    TBD: Need a validation class for metadata. 
     """
+    is_valid = False
+    if not os.path.isfile(file_path):
+        raise Exception("Path returned was incorrect: {0}".format(file_path))
+    else:
+        print("Metadata file path verified")
+        #md = MetaData(file_path)
+        #is_valid = md.validate()
     return False
 
 def upload_to_cloud(h5_path, metadata_json_path):
