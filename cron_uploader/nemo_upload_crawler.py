@@ -159,14 +159,12 @@ def validate_metadata_file(file_path):
            include checking required parameters and general formatting of the file.
     TBD: Need a validation class for metadata. 
     """
-    is_valid = False
     if not os.path.isfile(file_path):
         raise Exception("Path returned was incorrect: {0}".format(file_path))
-    else:
-        print("Metadata file path verified")
-        #md = MetaData(file_path)
-        #is_valid = md.validate()
-    return False
+
+    md = MetaData(file_path=file_path)
+    return md.validate()
+
 
 def upload_to_cloud(h5_path, metadata_json_path):
     """
