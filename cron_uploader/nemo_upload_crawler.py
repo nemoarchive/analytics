@@ -12,13 +12,14 @@ import os
 import uuid
 from gear.datasetuploader import FileType, DatasetUploader
 import gear.mexuploader
-from gear.metadatauploader import MetadataUploader
+#from gear.metadatauploader import MetadataUploader
 import pandas
 import tarfile
 import json
 import ntpath
 import csv
 import itertools
+from gear.metadata import Metadata
 
 def main():
     parser = argparse.ArgumentParser( description='NeMO data processor for gEAR')
@@ -162,7 +163,8 @@ def validate_metadata_file(file_path):
     if not os.path.isfile(file_path):
         raise Exception("Path returned was incorrect: {0}".format(file_path))
 
-    md = MetaData(file_path=file_path)
+    #mdu = metadata()
+    md = Metadata(file_path=file_path)
     return md.validate()
 
 
