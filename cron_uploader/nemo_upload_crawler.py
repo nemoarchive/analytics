@@ -95,7 +95,7 @@ def extract_dataset(input_file_path, output_base):
            Returns: /path/to/DLPFCcon322polyAgeneLIBD
     """
     tar = tarfile.open(input_file_path)
-    tar.extractall(path= output_base)
+    tar.extractall(path = output_base)
     tar.close()
     tar_name = ntpath.basename(input_file_path).split('.',1)[0]
     tar_path = os.path.normpath(output_base+"/"+tar_name)
@@ -163,8 +163,7 @@ def validate_metadata_file(file_path):
     if not os.path.isfile(file_path):
         raise Exception("Path returned was incorrect: {0}".format(file_path))
 
-    #mdu = metadata()
-    md = Metadata(file_path=file_path)
+    md = Metadata(file_path = file_path)
     return md.validate()
 
 
