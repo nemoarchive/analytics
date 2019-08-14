@@ -10,8 +10,8 @@ validation, convert to H5AD, then push to the cloud node for import by a gEAR in
 import argparse
 import os
 import uuid
-from gear.datasetuploader import FileType, DatasetUploader
-import gear.mexuploader
+#from gear.datasetuploader import FileType, DatasetUploader
+#import gear.mexuploader
 #from gear.metadatauploader import MetadataUploader
 import pandas
 import tarfile
@@ -36,12 +36,15 @@ def main():
         metadata_is_valid  = validate_metadata_file(metadata_file_path)
         
         if metadata_is_valid:
+            log('INFO', "Metadata file is valid: {0}".format(metadata_file_path))
             metadata_json_path = create_metadata_json(metadata_file_path, dataset_id)
             h5_path = convert_to_h5ad(dataset_dir, dataset_id)
             
             ensure_ensembl_index(h5_path)
 
             upload_to_cloud(h5_path, metadata_json_path)
+        else:
+            log('INFO', "Metadata file is NOT valid: {0}".format(metadata_file_path))
 
             
 def convert_to_h5ad(dataset_dir, dataset_id):
@@ -94,6 +97,8 @@ def extract_dataset(input_file_path, output_base):
                                                    ./DLPFCcon322polyAgeneLIBD_EXPmeta.json
            Returns: /path/to/DLPFCcon322polyAgeneLIBD
     """
+    log('INFO', "Extracting dataset at path: {0}".format(input_file_path))
+    
     tar = tarfile.open(input_file_path)
     tar.extractall(path = output_base)
     tar.close()
@@ -135,12 +140,20 @@ def get_metadata_file(base_dir):
     Output: The full path to the file which appears to be the metadata file,
            whether that's an xls or json file
     """
+    log('INFO', "Extracting metadata file from base: {0}".format(base_dir))
     file_list = os.listdir(base_dir) 
     metadata_f = False
+    
     for filename in file_list:
         if "_EXPmeta" in filename:
             metadata_f = os.path.normpath(base_dir+"/"+filename)
+
+    log('INFO', "Got metadata file: {0}".format(metadata_f))
     return metadata_f
+
+def log(level, msg):
+    print("{0}: {1}".format(level, msg))
+
 
 def prepend(list, str):
     """
