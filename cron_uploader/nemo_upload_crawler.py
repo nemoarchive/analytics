@@ -20,6 +20,7 @@ import ntpath
 import csv
 import itertools
 from gear.metadata import Metadata
+from gear.dataarchive import DataArchive
 
 def main():
     parser = argparse.ArgumentParser( description='NeMO data processor for gEAR')
@@ -34,17 +35,17 @@ def main():
         dataset_dir = extract_dataset(file_path, args.output_base)
         metadata_file_path = get_metadata_file(dataset_dir)
         metadata_is_valid  = validate_metadata_file(metadata_file_path)
-        
+        h5_path = convert_to_h5ad(dataset_dir, dataset_id, args.output_base)    
         if metadata_is_valid:
             metadata_json_path = create_metadata_json(metadata_file_path, dataset_id)
-            h5_path = convert_to_h5ad(dataset_dir, dataset_id)
+            #h5_path = convert_to_h5ad(dataset_dir, dataset_id)
             
             ensure_ensembl_index(h5_path)
 
             upload_to_cloud(h5_path, metadata_json_path)
 
             
-def convert_to_h5ad(dataset_dir, dataset_id):
+def convert_to_h5ad(dataset_dir, dataset_id, output_dir):
     """
     Input: An extracted directory containing expression data files to be converted
            to H5AD.  These can be MEX or 3tab and should be handled appropriately.
@@ -53,8 +54,24 @@ def convert_to_h5ad(dataset_dir, dataset_id):
            file created should use the ID passed, like this:
 
            f50c5432-e9ca-4bdd-9a44-9e1d624c32f5.h5ad
+    
+    TBD: Error with writing to file.
     """
-    return ""
+    data_archive = DataArchive()
+    dtype = data_archive.get_archive_type(data_path = dataset_dir)
+    filename = ntpath.basename(os.path.splitext(dataset_dir)[0])
+    outdir_name = os.path.normpath(output_dir + "/" + filename + ".h5ad")
+    h5AD = None
+    if dtype == "3tab":
+        h5AD = data_archive.read_3tab_files(data_path = dataset_dir)
+    elif dtype == "mex":
+        h5AD = data_archive.read_mex_files(data_path = dataset_dir)
+    else:
+        raise Exception("Undetermined Format: {0}".format(dtype))
+    #if h5AD != None:
+        #h5AD.adata.write(outdir_name) ERROR: Exception: ('Error occurred while writing to file: ', ValueError('setting an array element with a sequence'))
+    #    h5AD.write_h5ad(output_path = outdir_name, gear_identifier = dataset_id)
+    return outdir_name
 
 def create_metadata_json(input_file_path, dataset_id):
     """
@@ -164,6 +181,7 @@ def validate_metadata_file(file_path):
         raise Exception("Path returned was incorrect: {0}".format(file_path))
 
     md = Metadata(file_path = file_path)
+    #print(md.validate())
     return md.validate()
 
 
