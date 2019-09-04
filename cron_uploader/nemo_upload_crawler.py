@@ -21,6 +21,8 @@ import csv
 import itertools
 from gear.metadata import Metadata
 from gear.dataarchive import DataArchive
+import sys
+import subprocess
 
 def main():
     parser = argparse.ArgumentParser( description='NeMO data processor for gEAR')
@@ -35,14 +37,13 @@ def main():
         dataset_dir = extract_dataset(file_path, args.output_base)
         metadata_file_path = get_metadata_file(dataset_dir)
         metadata_is_valid  = validate_metadata_file(metadata_file_path)
-        h5_path = convert_to_h5ad(dataset_dir, dataset_id, args.output_base)    
         if metadata_is_valid:
             log('INFO', "Metadata file is valid: {0}".format(metadata_file_path))
             metadata_json_path = create_metadata_json(metadata_file_path, dataset_id)
-            #h5_path = convert_to_h5ad(dataset_dir, dataset_id)
-            
-            ensure_ensembl_index(h5_path)
-
+            organism_taxa = get_organism_id(metadata_file_path)
+            organism_id = get_corresponding_sql_id(organism_taxa)
+            h5_path = convert_to_h5ad(dataset_dir, dataset_id, args.output_base) 
+            ensure_ensembl_index(h5_path, organism_id)
             upload_to_cloud(h5_path, metadata_json_path)
         else:
             log('INFO', "Metadata file is NOT valid: {0}".format(metadata_file_path))
@@ -62,7 +63,8 @@ def convert_to_h5ad(dataset_dir, dataset_id, output_dir):
     """
     data_archive = DataArchive()
     dtype = data_archive.get_archive_type(data_path = dataset_dir)
-    filename = ntpath.basename(os.path.splitext(dataset_dir)[0])
+    #filename = ntpath.basename(os.path.splitext(dataset_dir)[0])
+    filename = str(dataset_id)
     outdir_name = os.path.normpath(output_dir + "/" + filename + ".h5ad")
     h5AD = None
     if dtype == "3tab":
@@ -71,9 +73,8 @@ def convert_to_h5ad(dataset_dir, dataset_id, output_dir):
         h5AD = data_archive.read_mex_files(data_path = dataset_dir)
     else:
         raise Exception("Undetermined Format: {0}".format(dtype))
-    #if h5AD != None:
-        #h5AD.adata.write(outdir_name) ERROR: Exception: ('Error occurred while writing to file: ', ValueError('setting an array element with a sequence'))
-    #    h5AD.write_h5ad(output_path = outdir_name, gear_identifier = dataset_id)
+    if h5AD != None:
+        h5AD.write_h5ad(output_path = outdir_name, gear_identifier = dataset_id)
     return outdir_name
 
 def create_metadata_json(input_file_path, dataset_id):
@@ -85,14 +86,19 @@ def create_metadata_json(input_file_path, dataset_id):
     """
     return ""
 
-def ensure_ensembl_index(h5_path):
+def ensure_ensembl_index(h5_path, organism_id):
     """
     Input: An H5AD ideally with Ensembl IDs as the index.  If instead they are gene
            symbols, this function should perform the mapping.
 
     Output: An updated (if necessary) H5AD file indexed on Ensembl IDs after mapping.
            Returns nothing.
-    """
+    """ 
+    
+    input_param = ["-i", h5_path]
+    output_param = ["-o", h5_path]
+    org_param = ["-org", str(organism_id)]
+    subprocess.call(["/usr/local/common/Python-3.7.2/bin/python3", "add_ensembl_id_to_h5ad_missing_release.py"] + input_param + output_param + org_param, shell = False) 
     pass
 
 def extract_dataset(input_file_path, output_base):
@@ -125,6 +131,22 @@ def extract_dataset(input_file_path, output_base):
         raise Exception("Path returned was incorrect or extraction failed: {0}".format(input_file_path))
     return tar_path
 
+def get_corresponding_sql_id(sample_attributes):
+    data_organism_id = {'id' : [1, 2, 3, 5],
+                        'label' : ['Mouse', 'Human', 'Zebrafish', 'Chicken'],
+                        'taxon_id' : [10090, 9606, 7955, 9031]
+                        }
+    organism_id = False
+    if "Human" in sample_attributes or "Homo sapiens" in sample_attributes or "9606" in sample_attributes:
+        organism_id = 2 
+    if "Mouse" in sample_attributes or "Mus musculus" in sample_attributes or "10090" in sample_attributes:
+        organism_id = 1
+    if "Zebrafish" in sample_attributes or "Danio rerio" in sample_attributes or "7955" in sample_attributes:
+        organism_id = 3
+    if "Chicken" in sample_attributes or "Gallus gallus" in sample_attributes or "9031" in sample_attributes:
+        organism_id = 5
+    return(organism_id)
+
 def get_datasets_to_process(base_dir, output_base):
     """
     Input: A base directory with log files to process. 
@@ -136,7 +158,7 @@ def get_datasets_to_process(base_dir, output_base):
 
          Where the contents of these match the specification in docs/input_file_format_standard.md
     """
-    formats = ['mex','MEX', 'TABcounts', 'TABanalysis']
+    formats = ['mex','MEX', 'TABCOUNTS', 'TABanalysis']
     log_file_list = os.listdir(base_dir)
     log_file_list = prepend(log_file_list, base_dir)
     paths_to_return = []
@@ -162,11 +184,18 @@ def get_metadata_file(base_dir):
     metadata_f = False
     
     for filename in file_list:
-        if "_EXPmeta" in filename:
+        if "EXPmeta" in filename:
             metadata_f = os.path.normpath(base_dir+"/"+filename)
 
     log('INFO', "Got metadata file: {0}".format(metadata_f))
     return metadata_f
+
+def get_organism_id(metadata_path):
+    with open(metadata_path) as json_file:
+        jdata = json.load(json_file)
+        hold_taxid = jdata['sample_taxid']
+        hold_organism = jdata['sample_organism']
+    return hold_taxid, hold_organism
 
 def log(level, msg):
     print("{0}: {1}".format(level, msg))
