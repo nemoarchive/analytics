@@ -41,7 +41,7 @@ def main():
             log('INFO', "Metadata file is valid: {0}".format(metadata_file_path))
             metadata_json_path = create_metadata_json(metadata_file_path, dataset_id)
             organism_taxa = get_organism_id(metadata_file_path)
-            organism_id = get_corresponding_sql_id(organism_taxa)
+            organism_id = get_gear_organism_id(organism_taxa)
             h5_path = convert_to_h5ad(dataset_dir, dataset_id, args.output_base) 
             ensure_ensembl_index(h5_path, organism_id)
             upload_to_cloud(h5_path, metadata_json_path)
@@ -131,7 +131,7 @@ def extract_dataset(input_file_path, output_base):
         raise Exception("Path returned was incorrect or extraction failed: {0}".format(input_file_path))
     return tar_path
 
-def get_corresponding_sql_id(sample_attributes):
+def get_gear_organism_id(sample_attributes):
     data_organism_id = {'id' : [1, 2, 3, 5],
                         'label' : ['Mouse', 'Human', 'Zebrafish', 'Chicken'],
                         'taxon_id' : [10090, 9606, 7955, 9031]
