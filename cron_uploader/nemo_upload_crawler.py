@@ -26,7 +26,6 @@ import subprocess
 
 from google.cloud import storage
 gcloud_project = 'nemo-analytics'
-gcloud_instance = 'nemo-prod-201904'
 gcloud_bucket = 'nemo-analytics-incoming'
 
 def main():
