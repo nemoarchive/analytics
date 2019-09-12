@@ -24,12 +24,20 @@ from gear.dataarchive import DataArchive
 import sys
 import subprocess
 
+from google.cloud import storage
+gcloud_project = 'nemo-analytics'
+gcloud_instance = 'nemo-prod-201904'
+gcloud_bucket = 'nemo-analytics-incoming'
+
 def main():
     parser = argparse.ArgumentParser( description='NeMO data processor for gEAR')
 
     parser.add_argument('-ilb', '--input_log_base', type=str, required=True, help='Path to the base directory where the logs are found' )
     parser.add_argument('-ob', '--output_base', type=str, required=True, help='Path to a local output directory where files can be written while processing' )
     args = parser.parse_args()
+
+    sclient = storage.Client(project=gcloud_project)
+    bucket = storage.bucket.Bucket(client=client, name=gcloud_bucket)
 
     files_pending = get_datasets_to_process(args.input_log_base, args.output_base)
     for file_path in files_pending:
@@ -44,7 +52,7 @@ def main():
             organism_id = get_gear_organism_id(organism_taxa)
             h5_path = convert_to_h5ad(dataset_dir, dataset_id, args.output_base) 
             ensure_ensembl_index(h5_path, organism_id)
-            upload_to_cloud(h5_path, metadata_json_path)
+            upload_to_cloud(bucket, h5_path, metadata_json_path)
         else:
             log('INFO', "Metadata file is NOT valid: {0}".format(metadata_file_path))
 
@@ -226,16 +234,18 @@ def validate_metadata_file(file_path):
     #print(md.validate())
     return md.validate()
 
-
-def upload_to_cloud(h5_path, metadata_json_path):
+def upload_to_cloud(bucket, h5_path, metadata_json_path):
     """
     Input: Paths to both H5 and metadata files to be uploaded to a gEAR cloud instance
 
     Output: Files uploaded to GCloud.  No values returned.
+
+    Further docs: 
+      https://cloud.google.com/python/getting-started/using-cloud-storage
     """
-    # These could be made configurable
-    gcloud_project = 'nemo-analytics'
-    gcloud_instance = 'nemo-prod-201904'
+    for filename in [h5_path, metadata_json_path]:
+        blob = bucket.blob(os.path.basename(filename))
+        blob.upload_from_filename(filename)
 
 if __name__ == '__main__':
     main()
