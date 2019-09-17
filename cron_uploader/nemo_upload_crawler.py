@@ -7,9 +7,10 @@ validation, convert to H5AD, then push to the cloud node for import by a gEAR in
 
 Test commands:
 
-gcloud auth activate-service-account --key-file /home/jorvis/keys/nemo-analytics__archive-file-transfer.json
-export GOOGLE_APPLICATION_CREDENTIALS=/home/jorvis/keys/nemo-analytics__archive-file-transfer.json
+gcloud auth activate-service-account --key-file $HOME/keys/nemo-analytics__archive-file-transfer.json
+export GOOGLE_APPLICATION_CREDENTIALS=$HOME/keys/nemo-analytics__archive-file-transfer.json
 export PYTHONPATH=$HOME/git/gEAR/lib:$PYTHONPATH
+export PATH=/usr/local/common/Python-3.7.2/bin:$PATH
 
 # MEX
 /usr/local/common/Python-3.7.2/bin/python3 ~/git/analytics/cron_uploader/nemo_upload_crawler.py -ilb /local/scratch/achatterjee/MEX_TEST/IN/ -ob  ./
@@ -21,6 +22,7 @@ export PYTHONPATH=$HOME/git/gEAR/lib:$PYTHONPATH
 
 import argparse
 import os
+import datetime
 import uuid
 #from gear.datasetuploader import FileType, DatasetUploader
 #import gear.mexuploader
@@ -35,6 +37,7 @@ from gear.metadata import Metadata
 from gear.dataarchive import DataArchive
 import sys
 import subprocess
+import shutil
 
 from google.cloud import storage
 gcloud_project = 'nemo-analytics'
@@ -104,13 +107,10 @@ def ensure_ensembl_index(h5_path, organism_id):
 
     Output: An updated (if necessary) H5AD file indexed on Ensembl IDs after mapping.
            Returns nothing.
-    """ 
-    
-    input_param = ["-i", h5_path]
-    output_param = ["-o", h5_path]
-    org_param = ["-org", str(organism_id)]
-    subprocess.call(["/usr/local/common/Python-3.7.2/bin/python3", "add_ensembl_id_to_h5ad_missing_release.py"] + input_param + output_param + org_param, shell = False) 
-    pass
+    """
+    add_ensembl_cmd = "python3 $HOME/git/gEAR/bin/add_ensembl_id_to_h5ad_missing_release.py -i {0} -o {0}_new.h5ad -org {1}".format(h5_path, organism_id)
+    run_command(add_ensembl_cmd)
+    shutil.move("{0}_new.h5ad".format(h5_path), h5_path)
 
 def extract_dataset(input_file_path, output_base):
     """
@@ -209,7 +209,7 @@ def get_organism_id(metadata_path):
     return hold_taxid, hold_organism
 
 def log(level, msg):
-    print("{0}: {1}".format(level, msg))
+    print("{0}: {1}".format(level, msg),  flush=True)
 
 def prepend(list, str):
     """
@@ -220,6 +220,12 @@ def prepend(list, str):
     str += '{0}'
     list = [str.format(i) for i in list] 
     return(list)
+
+def run_command(cmd):
+    log("INFO", "Running command: {0}".format(cmd))
+    return_code = subprocess.call(cmd, shell=True)
+    if return_code != 0:
+       raise Exception("ERROR: [{2}] Return code {0} when running the following command: {1}".format(return_code, cmd, datetime.datetime.now()))
 
 def upload_to_cloud(bucket, h5_path, metadata_json_path):
     """
