@@ -5,6 +5,18 @@
 This is a script to read a log directory of expression data ready to parse, perform
 validation, convert to H5AD, then push to the cloud node for import by a gEAR instance.
 
+Test commands:
+
+gcloud auth activate-service-account --key-file /home/jorvis/keys/nemo-analytics__archive-file-transfer.json
+export GOOGLE_APPLICATION_CREDENTIALS=/home/jorvis/keys/nemo-analytics__archive-file-transfer.json
+export PYTHONPATH=$HOME/git/gEAR/lib:$PYTHONPATH
+
+# MEX
+/usr/local/common/Python-3.7.2/bin/python3 ~/git/analytics/cron_uploader/nemo_upload_crawler.py -ilb /local/scratch/achatterjee/MEX_TEST/IN/ -ob  ./
+
+# 3-tab
+/usr/local/common/Python-3.7.2/bin/python3 ~/git/analytics/cron_uploader/nemo_upload_crawler.py -ilb /local/scratch/achatterjee/Test_New/ -ob ./
+
 """
 
 import argparse
@@ -36,17 +48,18 @@ def main():
     args = parser.parse_args()
 
     sclient = storage.Client(project=gcloud_project)
-    bucket = storage.bucket.Bucket(client=client, name=gcloud_bucket)
+    bucket = storage.bucket.Bucket(client=sclient, name=gcloud_bucket)
 
     files_pending = get_datasets_to_process(args.input_log_base, args.output_base)
     for file_path in files_pending:
         dataset_id = uuid.uuid4()
         dataset_dir = extract_dataset(file_path, args.output_base)
         metadata_file_path = get_metadata_file(dataset_dir)
-        metadata_is_valid  = validate_metadata_file(metadata_file_path)
-        if metadata_is_valid:
+        metadata = Metadata(file_path=metadata_file_path)
+        if metadata.validate():
             log('INFO', "Metadata file is valid: {0}".format(metadata_file_path))
-            metadata_json_path = create_metadata_json(metadata_file_path, dataset_id)
+            metadata_json_path = "{0}.json".format(dataset_id)
+            metadata.write_json(file_path=metadata_json_path)
             organism_taxa = get_organism_id(metadata_file_path)
             organism_id = get_gear_organism_id(organism_taxa)
             h5_path = convert_to_h5ad(dataset_dir, dataset_id, args.output_base) 
@@ -83,15 +96,6 @@ def convert_to_h5ad(dataset_dir, dataset_id, output_dir):
     if h5AD != None:
         h5AD.write_h5ad(output_path = outdir_name, gear_identifier = dataset_id)
     return outdir_name
-
-def create_metadata_json(input_file_path, dataset_id):
-    """
-    Input: A metadata file in XLS or JSON format, validated.
- 
-    Output: The metadata file converted to JSON and named using the dataset ID, 
-           returning the full path of the resulting JSON file.
-    """
-    return ""
 
 def ensure_ensembl_index(h5_path, organism_id):
     """
@@ -207,7 +211,6 @@ def get_organism_id(metadata_path):
 def log(level, msg):
     print("{0}: {1}".format(level, msg))
 
-
 def prepend(list, str):
     """
     Input: List of files in the input directory and path to input directory
@@ -218,21 +221,6 @@ def prepend(list, str):
     list = [str.format(i) for i in list] 
     return(list)
 
-def validate_metadata_file(file_path):
-    """
-    Input: A metadata file path in XLS or JSON format.
-    
-    Output: Returns True/False reflecting the validation of the metadata file. This should
-           include checking required parameters and general formatting of the file.
-    TBD: Need a validation class for metadata. 
-    """
-    if not os.path.isfile(file_path):
-        raise Exception("Path returned was incorrect: {0}".format(file_path))
-
-    md = Metadata(file_path = file_path)
-    #print(md.validate())
-    return md.validate()
-
 def upload_to_cloud(bucket, h5_path, metadata_json_path):
     """
     Input: Paths to both H5 and metadata files to be uploaded to a gEAR cloud instance
@@ -242,6 +230,7 @@ def upload_to_cloud(bucket, h5_path, metadata_json_path):
     Further docs: 
       https://cloud.google.com/python/getting-started/using-cloud-storage
     """
+    log('INFO', 'Uploading these files to the cloud bucket: {0}, {1}'.format(h5_path, metadata_json_path))
     for filename in [h5_path, metadata_json_path]:
         blob = bucket.blob(os.path.basename(filename))
         blob.upload_from_filename(filename)
