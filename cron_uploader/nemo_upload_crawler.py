@@ -61,13 +61,16 @@ def main():
         metadata = Metadata(file_path=metadata_file_path)
         if metadata.validate():
             log('INFO', "Metadata file is valid: {0}".format(metadata_file_path))
-            metadata_json_path = "{0}.json".format(dataset_id)
-            metadata.write_json(file_path=metadata_json_path)
-            organism_taxa = get_organism_id(metadata_file_path)
-            organism_id = get_gear_organism_id(organism_taxa)
-            h5_path = convert_to_h5ad(dataset_dir, dataset_id, args.output_base) 
-            ensure_ensembl_index(h5_path, organism_id)
-            upload_to_cloud(bucket, h5_path, metadata_json_path)
+            try:
+                metadata_json_path = "{0}/{1}.json".format(args.output_base, dataset_id)
+                metadata.write_json(file_path=metadata_json_path)
+                organism_taxa = get_organism_id(metadata_file_path)
+                organism_id = get_gear_organism_id(organism_taxa)
+                h5_path = convert_to_h5ad(dataset_dir, dataset_id, args.output_base) 
+                ensure_ensembl_index(h5_path, organism_id)
+                upload_to_cloud(bucket, h5_path, metadata_json_path)
+            except:
+                log('ERROR', "Failed to process file:{0}".format(file_path))
         else:
             log('INFO', "Metadata file is NOT valid: {0}".format(metadata_file_path))
 
