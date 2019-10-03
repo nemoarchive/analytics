@@ -46,11 +46,21 @@ def main():
         download_data_for_processing(bucket, dataset_id)
         
         metadata = Metadata(file_path="{0}/{1}.json".format(processing_directory, dataset_id))
-        metadata.add_field_value(field='dataset_uid', value=dataset_id)
-        metadata.add_field_value(field='owner_id', value=dataset_owner_id)
-        metadata.add_field_value(field='schematic_image', value='')
-        metadata.add_field_value(field='share_uid', value=str(uuid.uuid4()))
-        metadata.add_field_value(field='default_plot_type', value='')
+        metadata.add_field_value('dataset_uid', dataset_id)
+        metadata.add_field_value('owner_id', dataset_owner_id)
+        metadata.add_field_value('schematic_image', '')
+        metadata.add_field_value('share_uid', str(uuid.uuid4()))
+        metadata.add_field_value('default_plot_type', '')
+
+        # hack for annotation source currently until NCBI is supported
+        annot_release = metadata.get_field_value('annotation_release_number')
+        if isinstance(annot_release, dict):
+            if annot_release['value'].startswith('hg'):
+                annot_release['value'] = 92
+        else:
+            if annot_release.startswith('hg'):
+                annot_release = 92
+
         metadata.save_to_mysql(status='completed')
 
         
