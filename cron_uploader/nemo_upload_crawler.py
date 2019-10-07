@@ -55,6 +55,7 @@ def main():
 
     files_pending = get_datasets_to_process(args.input_log_base, args.output_base)
     for file_path in files_pending:
+        log('INFO', "Processing datafile at path:{0}".format(file_path))
         dataset_id = uuid.uuid4()
         dataset_dir = extract_dataset(file_path, args.output_base)
         metadata_file_path = get_metadata_file(dataset_dir)
