@@ -47,14 +47,27 @@ gcloud_bucket = 'nemo-analytics-incoming'
 def main():
     parser = argparse.ArgumentParser( description='NeMO data processor for gEAR')
 
-    parser.add_argument('-ilb', '--input_log_base', type=str, required=True, help='Path to the base directory where the logs are found' )
+    parser.add_argument('-ilb', '--input_log_base', type=str, required=False, help='Path to the base directory where the logs are found' )
+    parser.add_argument('-id', '--input_directory', type=str, required=False, help='Path to a single input directory with tar files' )
     parser.add_argument('-ob', '--output_base', type=str, required=True, help='Path to a local output directory where files can be written while processing' )
     args = parser.parse_args()
+
+    # Must specify one
+    if args.input_log_base is None and args.input_directory is None:
+        raise Exception("Error: must specify either --input_log_base or --input_directory")
+
+    # Not both
+    if args.input_log_base and args.input_directory:
+        raise Exception("Error: must specify either --input_log_base or --input_directory, not both")
 
     sclient = storage.Client(project=gcloud_project)
     bucket = storage.bucket.Bucket(client=sclient, name=gcloud_bucket)
 
-    files_pending = get_datasets_to_process(args.input_log_base, args.output_base)
+    if args.input_directory:
+        files_pending = get_tar_paths_from_dir(args.input_directory)
+    else:
+        files_pending = get_datasets_to_process(args.input_log_base, args.output_base)
+        
     for file_path in files_pending:
         log('INFO', "Processing datafile at path:{0}".format(file_path))
         dataset_id = uuid.uuid4()
@@ -175,10 +188,15 @@ def get_datasets_to_process(base_dir, output_base):
          Where the contents of these match the specification in docs/input_file_format_standard.md
     """
     formats = ['mex','MEX', 'TABCOUNTS', 'TABanalysis']
-    log_file_list = os.listdir(base_dir)
+    log_file_list = list()
+    for entry in os.listdir(base_dir):
+        if entry.endswith('.log'):
+            log_file_list.append(entry)
+    
     log_file_list = prepend(log_file_list, base_dir)
     paths_to_return = []
     for logfile in log_file_list:
+        log('INFO', "Processing log file: {0}".format(logfile))
         fname = os.path.splitext(ntpath.basename(logfile))[0]
         output = os.path.normpath(output_base + "/" + fname + ".new")
         read_log_file = pandas.read_csv(logfile, sep="\t", header=0)
@@ -220,6 +238,15 @@ def get_organism_id(metadata_path):
         hold_taxid = jdata['sample_taxid']
         hold_organism = jdata['sample_organism']
     return hold_taxid, hold_organism
+
+def get_tar_paths_from_dir(base_dir):
+    tar_list = list()
+
+    for entry in os.listdir(base_dir):
+        if entry.endswith('.tar'):
+            tar_list.append("{0}/{1}".format(base_dir, entry))
+    
+    return tar_list
 
 def log(level, msg):
     print("{0}: {1}".format(level, msg),  flush=True)
