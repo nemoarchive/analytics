@@ -38,6 +38,7 @@ from gear.dataarchive import DataArchive
 import sys
 import subprocess
 import shutil
+import json
 
 from google.cloud import storage
 gcloud_project = 'nemo-analytics'
@@ -57,7 +58,7 @@ def main():
     for file_path in files_pending:
         dataset_id = uuid.uuid4()
         dataset_dir = extract_dataset(file_path, args.output_base)
-        metadata_file_path = get_metadata_file(dataset_dir)
+        metadata_file_path = get_metadata_file(dataset_dir, file_path)
         metadata = Metadata(file_path=metadata_file_path)
         if metadata.validate():
             log('INFO', "Metadata file is valid: {0}".format(metadata_file_path))
@@ -186,9 +187,9 @@ def get_datasets_to_process(base_dir, output_base):
             paths_to_return.append(tar_path)
     return paths_to_return
 
-def get_metadata_file(base_dir):
+def get_metadata_file(base_dir, dmz_path):
     """
-    Input: A base directory, presumably the extracted tarball of a dataset.
+    Input: A base directory, presumably the extracted tarball of a dataset and the path to archive being processed.
 
     Output: The full path to the file which appears to be the metadata file,
            whether that's an xls or json file
@@ -196,11 +197,19 @@ def get_metadata_file(base_dir):
     log('INFO', "Extracting metadata file from base: {0}".format(base_dir))
     file_list = os.listdir(base_dir) 
     metadata_f = False
-    
-    for filename in file_list:
-        if "EXPmeta" in filename:
-            metadata_f = os.path.normpath(base_dir+"/"+filename)
-
+    dtype = DataArchive()
+    dtype = dtype.get_archive_type(data_path = base_dir)
+    if dtype == "3tab":    
+        for filename in file_list:
+            if "EXPmeta" in filename:
+                metadata_f = os.path.normpath(base_dir+"/"+filename)
+    elif dtype == "mex":
+        metadata_fetch = "/local/devel/sadkins/nemo_bin/get_sample_by_file/nemo_get_metadata_for_file.py -s /local/devel/sadkins/nemo_bin/get_sample_by_file/Compiled_metadata_Light_20190426.xlsx "
+        output_path = os.path.normpath(base_dir + "/" + "EXPmeta_generated.json")
+        metadata_cmd ="python3 "+ metadata_fetch + " -i "+ dmz_path + " -o " + output_path
+        #not using subroutine as we might need to change how we run the command once the script is finalized by Shaun
+        metadata_cmd = subprocess.call(metadata_cmd, shell = True)
+        metadata_f = output_path
     log('INFO', "Got metadata file: {0}".format(metadata_f))
     return metadata_f
 
