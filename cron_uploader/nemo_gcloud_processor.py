@@ -10,7 +10,7 @@ This script reads data in the incoming bucket and does the following:
 Test commands:
 
 export PYTHONPATH=$HOME/git/gEAR/lib:$PYTHONPATH
-
+./nemo_gcloud_processor.py
 
 
 """
@@ -27,6 +27,7 @@ from google.cloud import storage
 gcloud_project = 'nemo-analytics'
 gcloud_bucket = 'nemo-analytics-incoming'
 processing_directory = '/tmp'
+destination_path = '/home/jorvis/git/gEAR/www/datasets'
 dataset_owner_id = 487
 
 def main():
@@ -44,13 +45,17 @@ def main():
     for h5 in h5s:
         dataset_id = h5.replace('.h5ad', '')
         download_data_for_processing(bucket, dataset_id)
+
+        metadata_path = "{0}/{1}.json".format(processing_directory, dataset_id)
+        h5ad_path = "{0}/{1}.h5ad".format(processing_directory, dataset_id)
         
-        metadata = Metadata(file_path="{0}/{1}.json".format(processing_directory, dataset_id))
+        metadata = Metadata(file_path=metadata_path)
         metadata.add_field_value('dataset_uid', dataset_id)
         metadata.add_field_value('owner_id', dataset_owner_id)
         metadata.add_field_value('schematic_image', '')
         metadata.add_field_value('share_uid', str(uuid.uuid4()))
         metadata.add_field_value('default_plot_type', '')
+        metadata.add_field_value('is_public', '1')
 
         # hack for annotation source currently until NCBI is supported
         annot_release = metadata.get_field_value('annotation_release_number')
@@ -63,7 +68,14 @@ def main():
 
         metadata.save_to_mysql(status='completed')
 
-        
+        # place the files where they go on the file system to be live in gEAR
+        shutil.move(metadata_path, "{0}/".format(destination_path))
+        shutil.move(h5ad_path, "{0}/".format(destination_path))
+
+        # remove files from bucket
+        for extension in ['h5ad', 'json']:
+            blob = bucket.blob("{0}.{1}".format(dataset_id, extension))
+            blob.delete()
     
 
 def download_data_for_processing(bucket, dataset_id):
