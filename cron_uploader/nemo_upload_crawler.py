@@ -81,8 +81,8 @@ def main():
                 metadata.write_json(file_path=metadata_json_path)
                 organism_taxa = get_organism_id(metadata_file_path)
                 organism_id = get_gear_organism_id(organism_taxa)
-                h5_path = convert_to_h5ad(dataset_dir, dataset_id, args.output_base) 
-                ensure_ensembl_index(h5_path, organism_id)
+                h5_path, is_en = convert_to_h5ad(dataset_dir, dataset_id, args.output_base) 
+                ensure_ensembl_index(h5_path, organism_id, is_en)
                 upload_to_cloud(bucket, h5_path, metadata_json_path)
             except:
                 log('ERROR', "Failed to process file:{0}".format(file_path))
@@ -102,6 +102,7 @@ def convert_to_h5ad(dataset_dir, dataset_id, output_dir):
     
     TBD: Error with writing to file.
     """
+    is_en = False
     data_archive = DataArchive()
     dtype = data_archive.get_archive_type(data_path = dataset_dir)
     #filename = ntpath.basename(os.path.splitext(dataset_dir)[0])
@@ -109,16 +110,17 @@ def convert_to_h5ad(dataset_dir, dataset_id, output_dir):
     outdir_name = os.path.normpath(output_dir + "/" + filename + ".h5ad")
     h5AD = None
     if dtype == "3tab":
-        h5AD = data_archive.read_3tab_files(data_path = dataset_dir)
+        h5AD, is_en = data_archive.read_3tab_files(data_path = dataset_dir)
     elif dtype == "mex":
-        h5AD = data_archive.read_mex_files(data_path = dataset_dir)
+        h5AD, is_en = data_archive.read_mex_files(data_path = dataset_dir)
+
     else:
         raise Exception("Undetermined Format: {0}".format(dtype))
     if h5AD != None:
         h5AD.write_h5ad(output_path = outdir_name, gear_identifier = dataset_id)
-    return outdir_name
+    return outdir_name, is_en
 
-def ensure_ensembl_index(h5_path, organism_id):
+def ensure_ensembl_index(h5_path, organism_id, is_en):
     """
     Input: An H5AD ideally with Ensembl IDs as the index.  If instead they are gene
            symbols, this function should perform the mapping.
@@ -126,9 +128,14 @@ def ensure_ensembl_index(h5_path, organism_id):
     Output: An updated (if necessary) H5AD file indexed on Ensembl IDs after mapping.
            Returns nothing.
     """
-    add_ensembl_cmd = "python3 $HOME/git/gEAR/bin/add_ensembl_id_to_h5ad_missing_release.py -i {0} -o {0}_new.h5ad -org {1}".format(h5_path, organism_id)
-    run_command(add_ensembl_cmd)
-    shutil.move("{0}_new.h5ad".format(h5_path), h5_path)
+    if is_en == False:
+        add_ensembl_cmd = "python3 $HOME/git/gEAR/bin/add_ensembl_id_to_h5ad_missing_release.py -i {0} -o {0}_new.h5ad -org {1}".format(h5_path, organism_id)
+        run_command(add_ensembl_cmd)
+        shutil.move("{0}_new.h5ad".format(h5_path), h5_path)
+    else:
+        add_ensembl_cmd = "/usr/local/common/Python-3.7.2/bin/python3 /local/projects-t2/achatterjee/gEAR/bin/find_best_ensembl_release_from_h5ad.py -i {0} -org {1}".format(h5_path, organism_id)
+        run_command(add_ensembl_cmd)
+        
 
 def extract_dataset(input_file_path, output_base):
     """
@@ -187,7 +194,7 @@ def get_datasets_to_process(base_dir, output_base):
 
          Where the contents of these match the specification in docs/input_file_format_standard.md
     """
-    formats = ['mex','MEX', 'TABCOUNTS', 'TABanalysis']
+    formats = ['mex','MEX', 'TABCOUNTS', 'TABanalysis', 'TABcounts']
     log_file_list = list()
     for entry in os.listdir(base_dir):
         if entry.endswith('.log'):
@@ -235,9 +242,14 @@ def get_metadata_file(base_dir, dmz_path):
 def get_organism_id(metadata_path):
     with open(metadata_path) as json_file:
         jdata = json.load(json_file)
-        hold_taxid = jdata['sample_taxid']
-        hold_organism = jdata['sample_organism']
-    return hold_taxid, hold_organism
+        if 'sample_taxid' in jdata:
+            hold_taxid = jdata['sample_taxid']
+        elif 'taxon_id' in jdata:
+            hold_taxid = jdata['taxon_id']
+        else:
+            raise Exception("No taxon id provided".format(return_code, cmd, datetime.datetime.now()))
+        #hold_organism = jdata['sample_organism']
+    return hold_taxid
 
 def get_tar_paths_from_dir(base_dir):
     tar_list = list()
