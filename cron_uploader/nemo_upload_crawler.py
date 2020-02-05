@@ -80,11 +80,8 @@ def main():
         #Where to Store needs to be identified?
         f_handler = logging.FileHandler(datetime.now().strftime('processed_%H_%M_%d_%m_%Y.log'))
         f_handler.setLevel(logging.INFO)
-        f_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s - UID: %(dataset_id)-50s')
+        f_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s - UID: %(dataset_id) - STATUS: %(status)s')
         f_handler.setFormatter(f_format)
-        temp_ds = {'dataset_id': dataset_id}
-        logger.info(file_path, extra = temp_ds)
-
         if metadata.validate():
             log('INFO', "Metadata file is valid: {0}".format(metadata_file_path))
             try:
@@ -94,9 +91,11 @@ def main():
                 organism_id = get_gear_organism_id(organism_taxa)
                 h5_path, is_en = convert_to_h5ad(dataset_dir, dataset_id, args.output_base) 
                 ensure_ensembl_index(h5_path, organism_id, is_en)
+                logger.info(file_path, extra={"dataset_id":dataset_id, "status": h5_path})
                 upload_to_cloud(bucket, h5_path, metadata_json_path)
             except:
                 log('ERROR', "Failed to process file:{0}".format(file_path))
+                logger.info(file_path, extra={"dataset_id":dataset_id, "status":"FAILED"})
         else:
             log('INFO', "Metadata file is NOT valid: {0}".format(metadata_file_path))
 
