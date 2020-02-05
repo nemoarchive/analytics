@@ -39,6 +39,7 @@ import sys
 import subprocess
 import shutil
 import json
+import logger
 
 from google.cloud import storage
 gcloud_project = 'nemo-analytics'
@@ -74,6 +75,16 @@ def main():
         dataset_dir = extract_dataset(file_path, args.output_base)
         metadata_file_path = get_metadata_file(dataset_dir, file_path)
         metadata = Metadata(file_path=metadata_file_path)
+        logger = logging.getLogger('tracking_log')
+        logger.setLevel(logging.INFO)
+        #Where to Store needs to be identified?
+        f_handler = logging.FileHandler(datetime.now().strftime('processed_%H_%M_%d_%m_%Y.log'))
+        f_handler.setLevel(logging.INFO)
+        f_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s - UID: %(dataset_id)-50s')
+        f_handler.setFormatter(f_format)
+        temp_ds = {'dataset_id': dataset_id}
+        logger.info(file_path, extra = temp_ds)
+
         if metadata.validate():
             log('INFO', "Metadata file is valid: {0}".format(metadata_file_path))
             try:
