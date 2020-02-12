@@ -39,7 +39,7 @@ import sys
 import subprocess
 import shutil
 import json
-import logger
+import logging
 
 from google.cloud import storage
 gcloud_project = 'nemo-analytics'
