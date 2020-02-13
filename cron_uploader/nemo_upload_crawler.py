@@ -52,7 +52,8 @@ def main():
     parser.add_argument('-id', '--input_directory', type=str, required=False, help='Path to a single input directory with tar files' )
     parser.add_argument('-ob', '--output_base', type=str, required=True, help='Path to a local output directory where files can be written while processing' )
     args = parser.parse_args()
-
+    #Path to single log file with processed datasets
+    processed_logfile = "/local/projects-t3/NEMO/cron_upload_log/cron_upload.log"
     # Must specify one
     if args.input_log_base is None and args.input_directory is None:
         raise Exception("Error: must specify either --input_log_base or --input_directory")
@@ -67,7 +68,7 @@ def main():
     if args.input_directory:
         files_pending = get_tar_paths_from_dir(args.input_directory)
     else:
-        files_pending = get_datasets_to_process(args.input_log_base, args.output_base)
+        files_pending = get_datasets_to_process(args.input_log_base, args.output_base, processed_logfile)
         
     for file_path in files_pending:
         log('INFO', "Processing datafile at path:{0}".format(file_path))
@@ -78,9 +79,9 @@ def main():
         logger = logging.getLogger('tracking_log')
         logger.setLevel(logging.INFO)
         #Where to Store needs to be identified?
-        f_handler = logging.FileHandler(datetime.now().strftime('processed_%H_%M_%d_%m_%Y.log'))
+        f_handler = logging.FileHandler(processed_logfile, mode='a', encoding = None, delay = False)
         f_handler.setLevel(logging.INFO)
-        f_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s - UID: %(dataset_id) - STATUS: %(status)s')
+        f_format = logging.Formatter('%(asctime)s\t%(message)s\t%(dataset_id)s\t%(status)s')
         f_handler.setFormatter(f_format)
         if metadata.validate():
             log('INFO', "Metadata file is valid: {0}".format(metadata_file_path))
@@ -193,7 +194,7 @@ def get_gear_organism_id(sample_attributes):
         organism_id = 5
     return(organism_id)
 
-def get_datasets_to_process(base_dir, output_base):
+def get_datasets_to_process(base_dir, output_base, processed_log):
     """
     Input: A base directory with log files to process. 
 
@@ -204,6 +205,7 @@ def get_datasets_to_process(base_dir, output_base):
 
          Where the contents of these match the specification in docs/input_file_format_standard.md
     """
+    processed_ds = pandas.read_csv(processed_log, sep='\t', usecols = ['Processed_Files'], header=0)
     formats = ['mex','MEX', 'TABCOUNTS', 'TABanalysis', 'TABcounts']
     log_file_list = list()
     for entry in os.listdir(base_dir):
@@ -220,7 +222,8 @@ def get_datasets_to_process(base_dir, output_base):
         hold_relevant_entries = read_log_file.loc[read_log_file['Type'].isin(formats)]
         for entry in hold_relevant_entries.index:
             tar_path = hold_relevant_entries['Output Dir'][entry] + "/" + hold_relevant_entries['Output file'][entry]
-            paths_to_return.append(tar_path)
+            if not processed_ds['Processed_Files'].str.contains(tar_path).any():
+                paths_to_return.append(tar_path)
     return paths_to_return
 
 def get_metadata_file(base_dir, dmz_path):
