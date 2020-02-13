@@ -83,6 +83,7 @@ def main():
         f_handler.setLevel(logging.INFO)
         f_format = logging.Formatter('%(asctime)s\t%(message)s\t%(dataset_id)s\t%(status)s')
         f_handler.setFormatter(f_format)
+        logger.addHandler(f_handler)
         if metadata.validate():
             log('INFO', "Metadata file is valid: {0}".format(metadata_file_path))
             try:
@@ -221,7 +222,7 @@ def get_datasets_to_process(base_dir, output_base, processed_log):
         read_log_file = pandas.read_csv(logfile, sep="\t", header=0)
         hold_relevant_entries = read_log_file.loc[read_log_file['Type'].isin(formats)]
         for entry in hold_relevant_entries.index:
-            tar_path = hold_relevant_entries['Output Dir'][entry] + "/" + hold_relevant_entries['Output file'][entry]
+            tar_path = os.path.normpath(hold_relevant_entries['Output Dir'][entry] + "/" + hold_relevant_entries['Output file'][entry])
             if not processed_ds['Processed_Files'].str.contains(tar_path).any():
                 paths_to_return.append(tar_path)
     return paths_to_return
