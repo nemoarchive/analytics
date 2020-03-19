@@ -32,10 +32,13 @@ dataset_owner_id = 487
 
 def main():
     parser = argparse.ArgumentParser( description='NeMO data processor for gEAR')
-
-    #parser.add_argument('-ilb', '--input_log_base', type=str, required=True, help='Path to the base directory where the logs are found' )
-    #parser.add_argument('-ob', '--output_base', type=str, required=True, help='Path to a local output directory where files can be written while processing' )
+    parser.add_argument('-s', '--skip_ids', type=str, required=False, help='Comma-separated list of IDs to skip while processing' )
     args = parser.parse_args()
+
+    ids_to_skip = []
+
+    if args.skip_ids:
+        ids_to_skip = args.skip_ids.split(',')
 
     sclient = storage.Client(project=gcloud_project)
     bucket = storage.bucket.Bucket(client=sclient, name=gcloud_bucket)
@@ -44,6 +47,10 @@ def main():
 
     for h5 in h5s:
         dataset_id = h5.replace('.h5ad', '')
+
+        if dataset_id in ids_to_skip:
+            continue
+        
         download_data_for_processing(bucket, dataset_id)
 
         metadata_path = "{0}/{1}.json".format(processing_directory, dataset_id)
