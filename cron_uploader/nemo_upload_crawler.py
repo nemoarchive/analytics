@@ -210,7 +210,7 @@ def get_datasets_to_process(base_dir, output_base, processed_log):
     formats = ['mex','MEX', 'TABCOUNTS', 'TABanalysis', 'TABcounts']
     log_file_list = list()
     for entry in os.listdir(base_dir):
-        if entry.endswith('.log'):
+        if entry.endswith('diff.log'):
             log_file_list.append(entry)
     
     log_file_list = prepend(log_file_list, base_dir)
