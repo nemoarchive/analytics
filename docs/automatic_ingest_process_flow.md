@@ -10,6 +10,8 @@ files existing in the DMZ and H5AD files pushed to the gEAR instance.
   - Creates diff files for dmz and incoming.  gEAR will process the dmz one.
   - Makes tarballs of the directory files
   - Copies tarballs to the DMZ
+  
+NOTE: This process will change a bit when Shaun rolls out the updated ingesting scripts.
 
 ## Incoming
 
@@ -25,11 +27,11 @@ The 'DMZ' directory tree root is:
 
     /local/projects-t3/NEMO/dmz
 
-The diff file for incoming is generated Thursday morning at 12:05 AM. The diff filename will be in the format of ```dmz-<project>-YYYY-MM-DD.diff``` where \<project\> is either "BICCN", "BICCN", or "other".
+The diff file for incoming is generated Thursday morning at 12:05 AM. The diff filename will be in the format of ```dmz-<project>-YYYY-MM-DD.diff``` where \<project\> is either "BICCC", "BICCN", or "other".
 
 Only data in the dmz will be ingested for gEAR.
 
-Question - are we doing all labs, or only a subset (bicc, biccn, etc?)
+Question - are we doing all labs, or only a subset (biccc, biccn, etc?)
 
 ## gEAR instance
 
