@@ -41,40 +41,42 @@ import shutil
 import json
 import logging
 
+import configparser
+conf_loc = os.path.join(os.path.dirname(__file__), '.conf.ini')
+if not os.path.isfile(conf_loc):
+    sys.exit("Config file could not be found at {}".format(conf_loc))
+config = ConfigParser.ConfigParser()
+config.read(conf_loc)
+
 from google.cloud import storage
-gcloud_project = 'nemo-analytics'
-gcloud_bucket = 'nemo-analytics-incoming'
+GCLOUD_PROJECT = config.get("gcloud", "project")
+GCLOUD_BUCKET = config.get("gcloud", "bucket")
 
 def main():
     parser = argparse.ArgumentParser( description='NeMO data processor for gEAR')
 
-    parser.add_argument('-ilb', '--input_log_base', type=str, required=False, help='Path to the base directory where the logs are found' )
-    parser.add_argument('-id', '--input_directory', type=str, required=False, help='Path to a single input directory with tar files' )
+    inputtype = parser.add_mutually_exclusive_group(required=True)
+    inputtype.add_argument('-ilb', '--input_log_base', type=str, help='Path to the base directory where the logs are found' )
+    inputtype.add_argument('-id', '--input_directory', type=str, help='Path to a single input directory with tar files' )
     parser.add_argument('-ob', '--output_base', type=str, required=True, help='Path to a local output directory where files can be written while processing' )
+    parser.add_argument('-s', '--metadata_xls', required=True, help='Path to a Excel-formatted spreadsheet of metadata')
     args = parser.parse_args()
     #Path to single log file with processed datasets
-    processed_logfile = "/local/projects-t3/NEMO/cron_upload_log/cron_upload.log"
-    # Must specify one
-    if args.input_log_base is None and args.input_directory is None:
-        raise Exception("Error: must specify either --input_log_base or --input_directory")
+    processed_logfile = config.get("paths", "cron_upload_log")
 
-    # Not both
-    if args.input_log_base and args.input_directory:
-        raise Exception("Error: must specify either --input_log_base or --input_directory, not both")
-
-    sclient = storage.Client(project=gcloud_project)
-    bucket = storage.bucket.Bucket(client=sclient, name=gcloud_bucket)
+    sclient = storage.Client(project=GCLOUD_PROJECT)
+    bucket = storage.bucket.Bucket(client=sclient, name=GCLOUD_BUCKET)
 
     if args.input_directory:
         files_pending = get_tar_paths_from_dir(args.input_directory)
     else:
         files_pending = get_datasets_to_process(args.input_log_base, args.output_base, processed_logfile)
-        
+
     for file_path in files_pending:
         log('INFO', "Processing datafile at path:{0}".format(file_path))
         dataset_id = uuid.uuid4()
         dataset_dir = extract_dataset(file_path, args.output_base)
-        metadata_file_path = get_metadata_file(dataset_dir, file_path)
+        metadata_file_path = get_metadata_file(dataset_dir, file_path, args.metadata_xls)
         metadata = Metadata(file_path=metadata_file_path)
         logger = logging.getLogger('tracking_log')
         logger.setLevel(logging.INFO)
@@ -91,7 +93,7 @@ def main():
                 metadata.write_json(file_path=metadata_json_path)
                 organism_taxa = get_organism_id(metadata_file_path)
                 organism_id = get_gear_organism_id(organism_taxa)
-                h5_path, is_en = convert_to_h5ad(dataset_dir, dataset_id, args.output_base) 
+                h5_path, is_en = convert_to_h5ad(dataset_dir, dataset_id, args.output_base)
                 ensure_ensembl_index(h5_path, organism_id, is_en)
                 logger.info(file_path, extra={"dataset_id":dataset_id, "status": h5_path})
                 upload_to_cloud(bucket, h5_path, metadata_json_path)
@@ -101,17 +103,17 @@ def main():
         else:
             log('INFO', "Metadata file is NOT valid: {0}".format(metadata_file_path))
 
-            
+
 def convert_to_h5ad(dataset_dir, dataset_id, output_dir):
     """
     Input: An extracted directory containing expression data files to be converted
            to H5AD.  These can be MEX or 3tab and should be handled appropriately.
 
-    Output: An H5AD file should be created and the path returned.  The name of the 
+    Output: An H5AD file should be created and the path returned.  The name of the
            file created should use the ID passed, like this:
 
            f50c5432-e9ca-4bdd-9a44-9e1d624c32f5.h5ad
-    
+
     TBD: Error with writing to file.
     """
     is_en = False
@@ -140,14 +142,16 @@ def ensure_ensembl_index(h5_path, organism_id, is_en):
     Output: An updated (if necessary) H5AD file indexed on Ensembl IDs after mapping.
            Returns nothing.
     """
+
+    gear_bin_dir = config.get("paths", "gear_bin")
     if is_en == False:
-        add_ensembl_cmd = "python3 $HOME/git/gEAR/bin/add_ensembl_id_to_h5ad_missing_release.py -i {0} -o {0}_new.h5ad -org {1}".format(h5_path, organism_id)
+        add_ensembl_cmd = "python3 {0}/add_ensembl_id_to_h5ad_missing_release.py -i {1} -o {1}_new.h5ad -org {2}".format(gear_bin_dir, h5_path, organism_id)
         run_command(add_ensembl_cmd)
         shutil.move("{0}_new.h5ad".format(h5_path), h5_path)
     else:
-        add_ensembl_cmd = "/usr/local/common/Python-3.7.2/bin/python3 /local/projects-t2/achatterjee/gEAR/bin/find_best_ensembl_release_from_h5ad.py -i {0} -org {1}".format(h5_path, organism_id)
+        add_ensembl_cmd = "/usr/local/common/Python-3.7.2/bin/python3 {0}/find_best_ensembl_release_from_h5ad.py -i {1} -org {2}".format(gear_bin_dir, h5_path, organism_id)
         run_command(add_ensembl_cmd)
-        
+
 
 def extract_dataset(input_file_path, output_base):
     """
@@ -161,15 +165,15 @@ def extract_dataset(input_file_path, output_base):
            directory name within which all the files of the dataset are contained.
 
     Example:
-           Input:  /path/to/DLPFCcon322polyAgeneLIBD.3tab.tar.gz 
-           Output: /path/to/DLPFCcon322polyAgeneLIBD/DLPFCcon322polyAgeneLIBD_COLmeta.tab 
-                                                   ./DLPFCcon322polyAgeneLIBD_DataMTX.tab 
-                                                   ./DLPFCcon322polyAgeneLIBD_ROWmeta.tab 
+           Input:  /path/to/DLPFCcon322polyAgeneLIBD.3tab.tar.gz
+           Output: /path/to/DLPFCcon322polyAgeneLIBD/DLPFCcon322polyAgeneLIBD_COLmeta.tab
+                                                   ./DLPFCcon322polyAgeneLIBD_DataMTX.tab
+                                                   ./DLPFCcon322polyAgeneLIBD_ROWmeta.tab
                                                    ./DLPFCcon322polyAgeneLIBD_EXPmeta.json
            Returns: /path/to/DLPFCcon322polyAgeneLIBD
     """
     log('INFO', "Extracting dataset at path: {0}".format(input_file_path))
-    
+
     tar = tarfile.open(input_file_path)
     tar.extractall(path = output_base)
     tar.close()
@@ -186,7 +190,7 @@ def get_gear_organism_id(sample_attributes):
                         }
     organism_id = False
     if "Human" in sample_attributes or "Homo sapiens" in sample_attributes or "9606" in sample_attributes:
-        organism_id = 2 
+        organism_id = 2
     if "Mouse" in sample_attributes or "Mus musculus" in sample_attributes or "10090" in sample_attributes:
         organism_id = 1
     if "Zebrafish" in sample_attributes or "Danio rerio" in sample_attributes or "7955" in sample_attributes:
@@ -197,7 +201,7 @@ def get_gear_organism_id(sample_attributes):
 
 def get_datasets_to_process(base_dir, output_base, processed_log):
     """
-    Input: A base directory with log files to process. 
+    Input: A base directory with log files to process.
 
     Output: A list of dataset archive files to process, like this:
 
@@ -207,12 +211,12 @@ def get_datasets_to_process(base_dir, output_base, processed_log):
          Where the contents of these match the specification in docs/input_file_format_standard.md
     """
     processed_ds = pandas.read_csv(processed_log, sep='\t', usecols = ['Processed_Files'], header=0)
-    formats = ['mex','MEX', 'TABCOUNTS', 'TABanalysis', 'TABcounts']
+    formats = [i.upper() for i in ['MEX', 'TABanalysis', 'TABcounts']]
     log_file_list = list()
     for entry in os.listdir(base_dir):
         if entry.endswith('diff.log'):
             log_file_list.append(entry)
-    
+
     log_file_list = prepend(log_file_list, base_dir)
     paths_to_return = []
     for logfile in log_file_list:
@@ -220,14 +224,14 @@ def get_datasets_to_process(base_dir, output_base, processed_log):
         fname = os.path.splitext(ntpath.basename(logfile))[0]
         output = os.path.normpath(output_base + "/" + fname + ".new")
         read_log_file = pandas.read_csv(logfile, sep="\t", header=0)
-        hold_relevant_entries = read_log_file.loc[read_log_file['Type'].isin(formats)]
+        hold_relevant_entries = read_log_file.loc[read_log_file['Type'].upper().isin(formats)]
         for entry in hold_relevant_entries.index:
             tar_path = os.path.normpath(hold_relevant_entries['Output Dir'][entry] + "/" + hold_relevant_entries['Output file'][entry])
             if not processed_ds['Processed_Files'].str.contains(tar_path).any():
                 paths_to_return.append(tar_path)
     return paths_to_return
 
-def get_metadata_file(base_dir, dmz_path):
+def get_metadata_file(base_dir, dmz_path, metadata_sheet):
     """
     Input: A base directory, presumably the extracted tarball of a dataset and the path to archive being processed.
 
@@ -235,16 +239,16 @@ def get_metadata_file(base_dir, dmz_path):
            whether that's an xls or json file
     """
     log('INFO', "Extracting metadata file from base: {0}".format(base_dir))
-    file_list = os.listdir(base_dir) 
+    file_list = os.listdir(base_dir)
     metadata_f = False
     dtype = DataArchive()
     dtype = dtype.get_archive_type(data_path = base_dir)
-    if dtype == "3tab":    
+    if dtype == "3tab":
         for filename in file_list:
             if "EXPmeta" in filename:
                 metadata_f = os.path.normpath(base_dir+"/"+filename)
     elif dtype == "mex":
-        metadata_fetch = "/local/devel/sadkins/nemo_bin/get_sample_by_file/nemo_get_metadata_for_file.py -s /local/devel/sadkins/nemo_bin/get_sample_by_file/Compiled_metadata_Light_20190426.xlsx "
+        metadata_fetch = "{}/get_sample_by_file/nemo_get_metadata_for_file.py -s {} ".format(config.get("paths", "nemo_scripts_bin"), metadata_sheet)
         output_path = os.path.normpath(base_dir + "/" + "EXPmeta_generated.json")
         metadata_cmd ="python3 "+ metadata_fetch + " -i "+ dmz_path + " -o " + output_path
         #not using subroutine as we might need to change how we run the command once the script is finalized by Shaun
@@ -261,7 +265,7 @@ def get_organism_id(metadata_path):
         elif 'taxon_id' in jdata:
             hold_taxid = jdata['taxon_id']
         else:
-            raise Exception("No taxon id provided".format(return_code, cmd, datetime.datetime.now()))
+            raise Exception("No taxon id provided in file {}".format(metadata_path, datetime.datetime.now()))
         #hold_organism = jdata['sample_organism']
     return hold_taxid
 
@@ -271,7 +275,7 @@ def get_tar_paths_from_dir(base_dir):
     for entry in os.listdir(base_dir):
         if entry.endswith('.tar'):
             tar_list.append("{0}/{1}".format(base_dir, entry))
-    
+
     return tar_list
 
 def log(level, msg):
@@ -284,7 +288,7 @@ def prepend(list, str):
     Output: List of full paths to log files in input directory
     """
     str += '{0}'
-    list = [str.format(i) for i in list] 
+    list = [str.format(i) for i in list]
     return(list)
 
 def run_command(cmd):
@@ -299,7 +303,7 @@ def upload_to_cloud(bucket, h5_path, metadata_json_path):
 
     Output: Files uploaded to GCloud.  No values returned.
 
-    Further docs: 
+    Further docs:
       https://cloud.google.com/python/getting-started/using-cloud-storage
     """
     log('INFO', 'Uploading these files to the cloud bucket: {0}, {1}'.format(h5_path, metadata_json_path))
