@@ -40,6 +40,11 @@ if not os.path.isfile(conf_loc):
 config = configparser.ConfigParser()
 config.read(conf_loc)
 
+# Necessary if we are to read from db
+sys.path.append(config.get("paths", "ident_api_path"))
+import sqlalchemy as db
+import mysql_tables as tables
+
 from google.cloud import storage
 GCLOUD_PROJECT = config.get("gcloud", "project")
 GCLOUD_BUCKET = config.get("gcloud", "bucket")
@@ -56,9 +61,11 @@ def main():
     parser = argparse.ArgumentParser( description='NeMO data processor for gEAR')
 
     inputtype = parser.add_mutually_exclusive_group(required=True)
-    inputtype.add_argument('-ilb', '--input_log_base', type=str, help='Path to the base directory where the logs are found' )
+    #inputtype.add_argument('-ilb', '--input_log_base', type=str, help='Path to the base directory where the logs are found' )
     inputtype.add_argument('-id', '--input_directory', type=str, help='Path to a single input directory with tar files' )
-    inputtype.add_argument('-l', '--list_file', help='Path to a file manifest containing a list of bundled tar files')
+    inputtype.add_argument('-l', '--list_file', help='Path to a file containing a list of bundled tar files.')
+    inputtype.add_argument('-m', '--manifest_file', help='Path to a file manifest containing `ls -l` contents')
+    inputtype.add_argument('-db', '--database', help="Get files out of database.  Credentials provide by config file", action='store_true')
     parser.add_argument('-ob', '--output_base', type=str, required=True, help='Path to a local output directory where files can be written while processing' )
     parser.add_argument('-s', '--metadata_xls', required=True, help='Path to a Excel-formatted spreadsheet of metadata')
     args = parser.parse_args()
@@ -67,13 +74,24 @@ def main():
     sclient = storage.Client(project=GCLOUD_PROJECT)
     bucket = storage.bucket.Bucket(client=sclient, name=GCLOUD_BUCKET)
 
+    # TODO: Eventually add from identifiers database
     if args.input_directory:
+        log("INFO", "Reading from input directory")
         files_pending = get_tar_paths_from_dir(args.input_directory)
     elif args.list_file:
+        log("INFO", "Reading from a list file")
         with open(args.list_file) as f:
             files_pending = [line.rstrip() for line in f]
+    elif args.manifest_file:
+        log("INFO", "Reading from inventory manifest file")
+        with open(args.manifest_file) as f:
+            all_lines = [line.rstrip() for line in f]
+            files_pending = get_tar_paths_from_manifest(all_lines)
     else:
-        files_pending = get_datasets_to_process(args.input_log_base, args.output_base, PROCESSED_LOGFILE)
+        log("INFO", "Reading from database")
+        files_pending = get_tar_paths_from_database()
+        # Phasing out reading from logfile
+        #files_pending = get_datasets_to_process(args.input_log_base, args.output_base, PROCESSED_LOGFILE)
 
     for file_path in files_pending:
         log('INFO', "Processing datafile at path:{0}".format(file_path))
@@ -211,8 +229,12 @@ def get_datasets_to_process(base_dir, output_base, processed_log):
 
          Where the contents of these match the specification in docs/input_file_format_standard.md
     """
+
+    # Open file of previously processed files for reading
     processed_ds = pandas.read_csv(processed_log, sep='\t', usecols = ['Processed_Files'], header=0)
     formats = [i.upper() for i in ['MEX', 'TABanalysis', 'TABcounts']]
+
+    # Gather all of the bundle log output files
     log_file_list = list()
     for entry in os.listdir(base_dir):
         if entry.endswith('diff.log'):
@@ -220,10 +242,9 @@ def get_datasets_to_process(base_dir, output_base, processed_log):
 
     log_file_list = prepend(log_file_list, base_dir)
     paths_to_return = []
+    # Open each logfile and get all MEX, TABanalysis, and TABcounts files
     for logfile in log_file_list:
         log('INFO', "Processing log file: {0}".format(logfile))
-        fname = os.path.splitext(ntpath.basename(logfile))[0]
-        output = os.path.normpath(output_base + "/" + fname + ".new")
         read_log_file = pandas.read_csv(logfile, sep="\t", header=0)
         hold_relevant_entries = read_log_file.loc[read_log_file['Type'].upper().isin(formats)]
         for entry in hold_relevant_entries.index:
@@ -267,12 +288,57 @@ def get_organism_id(metadata_path):
             return jdata['taxon_id']
         raise Exception("No taxon id provided in file {}".format(metadata_path, datetime.datetime.now()))
 
+def get_tar_paths_from_database():
+    """Use a database to read out the files."""
+    extensions = ['.mex.tar.gz', '.tab.analysis.tar', '.tab.counts.tar']
+
+    http_ptrn = config.get("paths", "http_path")
+    # Path to "release/public-facing" area
+    release_dir_ptrn = os.path.join(config.get("paths", "release_dir"), "brain")
+
+    conn = setup_mysql(config.get("mysql", "ip"), config.get("mysql", "db"), config.get("mysql", "user"), config.get("mysql", "pass"))
+
+    # Get all "derived" identifier records
+    query = db.select([tables.derived.columns.file_url])
+    result_proxy = conn.execute(query)
+
+    # Iterate through records and only keep MEX, TABcounts, and TABanalysis bundles
+    desired_files = []
+    for row in result_proxy:
+        for e in extensions:
+            if row[0].endswith(e):
+                # Replace HTTP URL with "release/public-facing" pathname
+                desired_files.append(row[0].replace(http_ptrn, release_dir_ptrn))
+                break
+    return desired_files
+
 def get_tar_paths_from_dir(base_dir):
     tar_list = list()
     for entry in os.listdir(base_dir):
-        if entry.endswith('.tar'):
+        if entry.endswith('.tar') or entry.endswith('.tar.gz'):
             tar_list.append("{0}/{1}".format(base_dir, entry))
     return tar_list
+
+def get_tar_paths_from_manifest(lines):
+    """Iterate through manifest filehandle to retrieve tar files that fit the formats desired."""
+    extensions = ['.mex.tar.gz', '.tab.analysis.tar', '.tab.counts.tar']
+
+    def is_good_file(filename):
+        """Does file end with a desired file extension?"""
+        for e in extensions:
+            if filename.endswith(e):
+                return True
+        return False
+
+    # Path to "release/public-facing" area
+    release_dir = config.get("paths", "release_dir")
+
+    # Extract files out of the `ls -l` output
+    files = [line.split()[-1] for line in lines]
+    # Only keep files with extensions we care about
+    desired_files = filter(is_good_file, files)
+    # Manifest file paths were relative to a specific directory, so add the directory back
+    return [os.path.join(release_dir, f) for f in desired_files]
 
 def log(level, msg):
     print("{0}: {1}".format(level, msg),  flush=True)
@@ -303,6 +369,12 @@ def setup_logger():
     f_handler.setFormatter(f_format)
     logger.addHandler(f_handler)
     return logger
+
+def setup_mysql(host, database, user, pw):
+    """Connect to MySQL and return database object."""
+    engine = db.create_engine('mysql+mysqldb://{}:{}@{}:3306/{}'.format(user, pw, host, database))
+    tables.create_tables(engine)
+    return engine.connect()
 
 def upload_to_cloud(bucket, h5_path, metadata_json_path):
     """
