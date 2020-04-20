@@ -12,6 +12,7 @@ Objective: This will be a python3-based script, executed via cron, which uses th
     * The bundling script runs every Wednesday, and the date on the file reflects the date of the .diff file created in incoming.  The first line is a header line that has information useful for you (incoming directory, prefix, etc)
   * Read from a list of absolute filepaths.  Straight and to the point.  Good for pinpointing specific files
   * Read from "dmz" inventory manifest file.  This file is generated on Sundays and will have the most up-to-date paths.
+    * If a file was moved, there is a good chance a file may be duplicated on the server as there is no way to know if it is new or a file that changed paths.
   * Read all tar files from a supplied input directory.  Again good for pinpointing specific files.
   * Read from the "derived" identifiers in the NeMO identifiers database.
     * When files are bundled, they are assigned identifiers and inserted here (along with sequence and alignment tables)
