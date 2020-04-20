@@ -15,24 +15,27 @@ export PYTHONPATH=$HOME/git/gEAR/lib:$PYTHONPATH
 
 """
 
-import argparse
-import os
-import json
-from gear.metadata import Metadata
-import sys
+import argparse, json, os, sys
+import datetime
 import shutil
+import subprocess
 import uuid
 
 import configparser
 conf_loc = os.path.join(os.path.dirname(__file__), '.conf.ini')
 if not os.path.isfile(conf_loc):
     sys.exit("Config file could not be found at {}".format(conf_loc))
-config = ConfigParser.ConfigParser()
+config = configparser.ConfigParser()
 config.read(conf_loc)
+
+# Read gEAR library modules
+sys.path.append(os.path.join(config.get("paths", "gear_dir"), "lib"))
+from gear.metadata import Metadata
 
 from google.cloud import storage
 GCLOUD_PROJECT = config.get("gcloud", "project")
 GCLOUD_BUCKET = config.get("gcloud", "bucket")
+
 PROCESSING_DIRECTORY = config.get("paths", "processing_dir")
 DESTINATION_PATH = config.get("paths", "dataset_dest")
 DATASET_OWNER_ID = config.get("metadata", "dataset_owner_id")

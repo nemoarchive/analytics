@@ -20,37 +20,37 @@ export PATH=/usr/local/common/Python-3.7.2/bin:$PATH
 
 """
 
-import argparse
-import os
+import argparse, json, os, sys
 import datetime
 import uuid
-#from gear.datasetuploader import FileType, DatasetUploader
-#import gear.mexuploader
-#from gear.metadatauploader import MetadataUploader
 import pandas
 import tarfile
-import json
 import ntpath
 import csv
 import itertools
-from gear.metadata import Metadata
-from gear.dataarchive import DataArchive
-import sys
 import subprocess
 import shutil
-import json
 import logging
 
+# Read from config file
 import configparser
 conf_loc = os.path.join(os.path.dirname(__file__), '.conf.ini')
 if not os.path.isfile(conf_loc):
     sys.exit("Config file could not be found at {}".format(conf_loc))
-config = ConfigParser.ConfigParser()
+config = configparser.ConfigParser()
 config.read(conf_loc)
 
 from google.cloud import storage
 GCLOUD_PROJECT = config.get("gcloud", "project")
 GCLOUD_BUCKET = config.get("gcloud", "bucket")
+
+#Path to single log file with processed datasets
+PROCESSED_LOGFILE = config.get("paths", "cron_upload_log")
+
+# Read gEAR library modules
+sys.path.append(os.path.join(config.get("paths", "gear_dir"), "lib"))
+from gear.metadata import Metadata
+from gear.dataarchive import DataArchive
 
 def main():
     parser = argparse.ArgumentParser( description='NeMO data processor for gEAR')
@@ -58,19 +58,22 @@ def main():
     inputtype = parser.add_mutually_exclusive_group(required=True)
     inputtype.add_argument('-ilb', '--input_log_base', type=str, help='Path to the base directory where the logs are found' )
     inputtype.add_argument('-id', '--input_directory', type=str, help='Path to a single input directory with tar files' )
+    inputtype.add_argument('-l', '--list_file', help='Path to a file manifest containing a list of bundled tar files')
     parser.add_argument('-ob', '--output_base', type=str, required=True, help='Path to a local output directory where files can be written while processing' )
     parser.add_argument('-s', '--metadata_xls', required=True, help='Path to a Excel-formatted spreadsheet of metadata')
     args = parser.parse_args()
-    #Path to single log file with processed datasets
-    processed_logfile = config.get("paths", "cron_upload_log")
 
+    # TODO: Research OAuth2 service accounts and see if that is a better method than exporting credentials on command line
     sclient = storage.Client(project=GCLOUD_PROJECT)
     bucket = storage.bucket.Bucket(client=sclient, name=GCLOUD_BUCKET)
 
     if args.input_directory:
         files_pending = get_tar_paths_from_dir(args.input_directory)
+    elif args.list_file:
+        with open(args.list_file) as f:
+            files_pending = [line.rstrip() for line in f]
     else:
-        files_pending = get_datasets_to_process(args.input_log_base, args.output_base, processed_logfile)
+        files_pending = get_datasets_to_process(args.input_log_base, args.output_base, PROCESSED_LOGFILE)
 
     for file_path in files_pending:
         log('INFO', "Processing datafile at path:{0}".format(file_path))
@@ -78,21 +81,17 @@ def main():
         dataset_dir = extract_dataset(file_path, args.output_base)
         metadata_file_path = get_metadata_file(dataset_dir, file_path, args.metadata_xls)
         metadata = Metadata(file_path=metadata_file_path)
-        logger = logging.getLogger('tracking_log')
-        logger.setLevel(logging.INFO)
-        #Where to Store needs to be identified?
-        f_handler = logging.FileHandler(processed_logfile, mode='a', encoding = None, delay = False)
-        f_handler.setLevel(logging.INFO)
-        f_format = logging.Formatter('%(asctime)s\t%(message)s\t%(dataset_id)s\t%(status)s')
-        f_handler.setFormatter(f_format)
-        logger.addHandler(f_handler)
+        logger = setup_logger()
         if metadata.validate():
             log('INFO', "Metadata file is valid: {0}".format(metadata_file_path))
             try:
                 metadata_json_path = "{0}/{1}.json".format(args.output_base, dataset_id)
                 metadata.write_json(file_path=metadata_json_path)
                 organism_taxa = get_organism_id(metadata_file_path)
-                organism_id = get_gear_organism_id(organism_taxa)
+                # Ensure organism_taxa is string in case Int is passed through JSON
+                organism_id = get_gear_organism_id(str(organism_taxa))
+                if organism_id == -1:
+                    raise
                 h5_path, is_en = convert_to_h5ad(dataset_dir, dataset_id, args.output_base)
                 ensure_ensembl_index(h5_path, organism_id, is_en)
                 logger.info(file_path, extra={"dataset_id":dataset_id, "status": h5_path})
@@ -143,7 +142,7 @@ def ensure_ensembl_index(h5_path, organism_id, is_en):
            Returns nothing.
     """
 
-    gear_bin_dir = config.get("paths", "gear_bin")
+    gear_bin_dir = os.path.join(config.get("paths", "gear_dir"), "bin")
     if is_en == False:
         add_ensembl_cmd = "python3 {0}/add_ensembl_id_to_h5ad_missing_release.py -i {1} -o {1}_new.h5ad -org {2}".format(gear_bin_dir, h5_path, organism_id)
         run_command(add_ensembl_cmd)
@@ -184,20 +183,22 @@ def extract_dataset(input_file_path, output_base):
     return tar_path
 
 def get_gear_organism_id(sample_attributes):
+    """
     data_organism_id = {'id' : [1, 2, 3, 5],
                         'label' : ['Mouse', 'Human', 'Zebrafish', 'Chicken'],
                         'taxon_id' : [10090, 9606, 7955, 9031]
                         }
-    organism_id = False
-    if "Human" in sample_attributes or "Homo sapiens" in sample_attributes or "9606" in sample_attributes:
-        organism_id = 2
-    if "Mouse" in sample_attributes or "Mus musculus" in sample_attributes or "10090" in sample_attributes:
-        organism_id = 1
-    if "Zebrafish" in sample_attributes or "Danio rerio" in sample_attributes or "7955" in sample_attributes:
-        organism_id = 3
-    if "Chicken" in sample_attributes or "Gallus gallus" in sample_attributes or "9031" in sample_attributes:
-        organism_id = 5
-    return(organism_id)
+    """
+    if sample_attributes.lower() in ["human", "homo sapiens","9606"]:
+        return 2
+    if sample_attributes.lower() in ["mouse","mus musculus", "10090"]:
+        return 1
+    if sample_attributes.lower() in ["zebrafish", "danio rerio", "7955"]:
+        return 3
+    if sample_attributes.lower() in ["chicken", "gallus gallus", "9031"]:
+        return 5
+    log("ERROR", "Could not associate organism or taxon id {} with a gEAR organism ID".format(sample_attributes))
+    return -1
 
 def get_datasets_to_process(base_dir, output_base, processed_log):
     """
@@ -261,41 +262,47 @@ def get_organism_id(metadata_path):
     with open(metadata_path) as json_file:
         jdata = json.load(json_file)
         if 'sample_taxid' in jdata:
-            hold_taxid = jdata['sample_taxid']
+            return jdata['sample_taxid']
         elif 'taxon_id' in jdata:
-            hold_taxid = jdata['taxon_id']
-        else:
-            raise Exception("No taxon id provided in file {}".format(metadata_path, datetime.datetime.now()))
-        #hold_organism = jdata['sample_organism']
-    return hold_taxid
+            return jdata['taxon_id']
+        raise Exception("No taxon id provided in file {}".format(metadata_path, datetime.datetime.now()))
 
 def get_tar_paths_from_dir(base_dir):
     tar_list = list()
-
     for entry in os.listdir(base_dir):
         if entry.endswith('.tar'):
             tar_list.append("{0}/{1}".format(base_dir, entry))
-
     return tar_list
 
 def log(level, msg):
     print("{0}: {1}".format(level, msg),  flush=True)
 
-def prepend(list, str):
+def prepend(filelist, input_dir):
     """
     Input: List of files in the input directory and path to input directory
 
     Output: List of full paths to log files in input directory
     """
-    str += '{0}'
-    list = [str.format(i) for i in list]
-    return(list)
+    input_dir += '{0}'
+    return [input_dir.format(i) for i in filelist]
 
 def run_command(cmd):
     log("INFO", "Running command: {0}".format(cmd))
     return_code = subprocess.call(cmd, shell=True)
     if return_code != 0:
        raise Exception("ERROR: [{2}] Return code {0} when running the following command: {1}".format(return_code, cmd, datetime.datetime.now()))
+
+def setup_logger():
+    """Set up the logger."""
+    logger = logging.getLogger('tracking_log')
+    logger.setLevel(logging.INFO)
+    #Where to Store needs to be identified?
+    f_handler = logging.FileHandler(PROCESSED_LOGFILE, mode='a', encoding = None, delay = False)
+    f_handler.setLevel(logging.INFO)
+    f_format = logging.Formatter('%(asctime)s\t%(message)s\t%(dataset_id)s\t%(status)s')
+    f_handler.setFormatter(f_format)
+    logger.addHandler(f_handler)
+    return logger
 
 def upload_to_cloud(bucket, h5_path, metadata_json_path):
     """
