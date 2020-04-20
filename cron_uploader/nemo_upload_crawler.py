@@ -97,6 +97,7 @@ def main():
         log('INFO', "Processing datafile at path:{0}".format(file_path))
         dataset_id = uuid.uuid4()
         dataset_dir = extract_dataset(file_path, args.output_base)
+        # Load metadata from spreadsheet
         metadata_file_path = get_metadata_file(dataset_dir, file_path, args.metadata_xls)
         metadata = Metadata(file_path=metadata_file_path)
         logger = setup_logger()
@@ -113,6 +114,7 @@ def main():
                 h5_path, is_en = convert_to_h5ad(dataset_dir, dataset_id, args.output_base)
                 ensure_ensembl_index(h5_path, organism_id, is_en)
                 logger.info(file_path, extra={"dataset_id":dataset_id, "status": h5_path})
+                log('INFO', "Uploading {} to GCP bucket".format(h5_path))
                 upload_to_cloud(bucket, h5_path, metadata_json_path)
             except:
                 log('ERROR', "Failed to process file:{0}".format(file_path))
@@ -242,7 +244,7 @@ def get_datasets_to_process(base_dir, output_base, processed_log):
 
     log_file_list = prepend(log_file_list, base_dir)
     paths_to_return = []
-    # Open each logfile and get all MEX, TABanalysis, and TABcounts files
+    # Open each logfile and get all MEX, TABanalysis, and TABcounts bundle files
     for logfile in log_file_list:
         log('INFO', "Processing log file: {0}".format(logfile))
         read_log_file = pandas.read_csv(logfile, sep="\t", header=0)
