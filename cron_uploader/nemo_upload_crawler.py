@@ -64,10 +64,12 @@ def main():
     #inputtype.add_argument('-ilb', '--input_log_base', type=str, help='Path to the base directory where the logs are found' )
     inputtype.add_argument('-id', '--input_directory', type=str, help='Path to a single input directory with tar files' )
     inputtype.add_argument('-l', '--list_file', help='Path to a file containing a list of bundled tar files.')
+    inputtype.add_argument('-I', '--identifiers_list', help='File containing a list of NeMO identifiers for files to upload.')
     inputtype.add_argument('-m', '--manifest_file', help='Path to a file manifest containing `ls -l` contents')
-    inputtype.add_argument('-db', '--database', help="Get files out of database.  Credentials provide by config file", action='store_true')
+    inputtype.add_argument('-db', '--database', help="Get all qualifying files out of database.  Credentials provide by config file", action='store_true')
     parser.add_argument('-ob', '--output_base', type=str, required=True, help='Path to a local output directory where files can be written while processing' )
     parser.add_argument('-s', '--metadata_xls', required=True, help='Path to a Excel-formatted spreadsheet of metadata')
+    parser.add_argument('--dry_run', help="Run only up to the point of determining which files will be extracted", action="store_true")
     args = parser.parse_args()
 
     # TODO: Research OAuth2 service accounts and see if that is a better method than exporting credentials on command line
@@ -88,13 +90,21 @@ def main():
             all_lines = [line.rstrip() for line in f]
             files_pending = get_tar_paths_from_manifest(all_lines)
     else:
-        log("INFO", "Reading from database")
-        files_pending = get_tar_paths_from_database()
+        conn = setup_mysql(config.get("mysql", "ip"), config.get("mysql", "db"), config.get("mysql", "user"), config.get("mysql", "pass"))
+        if args.identifiers_list:
+            log("INFO", "Reading files based on NeMO identifiers")
+            files_pending = get_files_based_on_identifiers(conn, args.identifiers_list)
+        else:
+            log("INFO", "Reading all qualifying files from database")
+            files_pending = get_tar_paths_from_database(conn)
         # Phasing out reading from logfile
         #files_pending = get_datasets_to_process(args.input_log_base, args.output_base, PROCESSED_LOGFILE)
 
     for file_path in files_pending:
         log('INFO', "Processing datafile at path:{0}".format(file_path))
+        if not os.path.isfile(file_path):
+            log('WARN', "File {} was not found... skipping!".format(file_path))
+            continue
         dataset_id = uuid.uuid4()
         dataset_dir = extract_dataset(file_path, args.output_base)
         # Load metadata from spreadsheet
@@ -120,7 +130,7 @@ def main():
                 log('ERROR', "Failed to process file:{0}".format(file_path))
                 logger.info(file_path, extra={"dataset_id":dataset_id, "status":"FAILED"})
         else:
-            log('INFO', "Metadata file is NOT valid: {0}".format(metadata_file_path))
+            log('ERROR', "Metadata file is NOT valid: {0}".format(metadata_file_path))
 
 
 def convert_to_h5ad(dataset_dir, dataset_id, output_dir):
@@ -255,6 +265,29 @@ def get_datasets_to_process(base_dir, output_base, processed_log):
                 paths_to_return.append(tar_path)
     return paths_to_return
 
+def get_files_based_on_identifiers(conn, identifiers_list):
+    """Get all files in databased based on passed-in identifiers."""
+
+    http_ptrn = config.get("paths", "http_path")
+    # Path to "release/public-facing" area
+    release_dir_ptrn = os.path.join(config.get("paths", "release_dir"), "brain")
+
+    with open(identifiers_list) as ifh:
+        idents = [line.rstrip() for line in ifh]
+
+    # Right now I believe only derived identifiers are necessary but I would rather include other tables if specified.
+    tables = [tables.sequence, tables.alignment, tables.derived]
+    desired_files = []
+    for t in tables:
+        query = db.select([t.c.file_url]) \
+                .filter(t.c.identifier.in_([idents]))
+        result_proxy = conn.execute(query)
+        # Iterate through records and add files
+        for row in result_proxy:
+            # Replace HTTP URL with "release/public-facing" pathname
+            desired_files.append(row[0].replace(http_ptrn, release_dir_ptrn))
+    return desired_files
+
 def get_metadata_file(base_dir, dmz_path, metadata_sheet):
     """
     Input: A base directory, presumably the extracted tarball of a dataset and the path to archive being processed.
@@ -290,15 +323,13 @@ def get_organism_id(metadata_path):
             return jdata['taxon_id']
         raise Exception("No taxon id provided in file {}".format(metadata_path, datetime.datetime.now()))
 
-def get_tar_paths_from_database():
+def get_tar_paths_from_database(conn):
     """Use a database to read out the files."""
     extensions = ['.mex.tar.gz', '.tab.analysis.tar', '.tab.counts.tar']
 
     http_ptrn = config.get("paths", "http_path")
     # Path to "release/public-facing" area
     release_dir_ptrn = os.path.join(config.get("paths", "release_dir"), "brain")
-
-    conn = setup_mysql(config.get("mysql", "ip"), config.get("mysql", "db"), config.get("mysql", "user"), config.get("mysql", "pass"))
 
     # Get all "derived" identifier records
     query = db.select([tables.derived.columns.file_url])

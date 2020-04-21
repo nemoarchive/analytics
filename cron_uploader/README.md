@@ -18,6 +18,7 @@ Objective: This will be a python3-based script, executed via cron, which uses th
     * When files are bundled, they are assigned identifiers and inserted here (along with sequence and alignment tables)
     * If files are moved in "dmz" this could break, but we will hopefully make a script to fix paths if files are moved.
     * Need to convert data.nemoarchive.org URL into a local filepath
+  * Read from a list of NeMO identifiers to get specific files from a database
 * various file patterns that Shaun uses for each filetype, check /local/devel/sadkins/nemo_bin/validate_nemo_files.py
 * cron job will live on cronmaster on **tartarus**
 
