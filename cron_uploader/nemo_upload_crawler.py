@@ -97,6 +97,7 @@ def main():
         else:
             log("INFO", "Reading all qualifying files from database")
             files_pending = get_tar_paths_from_database(conn)
+        conn.close()
         # Phasing out reading from logfile
         #files_pending = get_datasets_to_process(args.input_log_base, args.output_base, PROCESSED_LOGFILE)
 
