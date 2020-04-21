@@ -53,7 +53,7 @@ GCLOUD_BUCKET = config.get("gcloud", "bucket")
 PROCESSED_LOGFILE = config.get("paths", "cron_upload_log")
 
 # Read gEAR library modules
-sys.path.append(os.path.join(config.get("paths", "gear_dir"), "lib"))
+#sys.path.append(os.path.join(config.get("paths", "gear_dir"), "lib"))
 from gear.metadata import Metadata
 from gear.dataarchive import DataArchive
 
@@ -131,6 +131,7 @@ def main():
                 logger.info(file_path, extra={"dataset_id":dataset_id, "status":"FAILED"})
         else:
             log('ERROR', "Metadata file is NOT valid: {0}".format(metadata_file_path))
+    log('INFO', "Complete! Exiting.")
 
 
 def convert_to_h5ad(dataset_dir, dataset_id, output_dir):
@@ -425,7 +426,7 @@ def upload_to_cloud(bucket, h5_path, metadata_json_path):
 
 if __name__ == '__main__':
     main()
-
+    sys.exit()
 
 
 
