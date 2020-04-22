@@ -24,7 +24,7 @@ import argparse, json, os, sys
 import datetime
 import uuid
 import pandas
-import tarfile
+import tarfile, gzip
 import ntpath
 import csv
 import itertools
@@ -110,6 +110,13 @@ def main():
         dataset_dir = extract_dataset(file_path, args.output_base)
         # Load metadata from spreadsheet
         metadata_file_path = get_metadata_file(dataset_dir, file_path, args.metadata_xls)
+        if not metadata_file_path:
+            log('WARN', "Datatype could not be determined from files in {}... skippping".format(dataset_dir))
+            continue
+        if not os.stat(metadata_file_path).st_size:
+            log('WARN', "Metadata file {} is empty... skipping".format(metadata_file_path))
+            continue
+        log('INFO', "Got metadata file: {0}".format(metadata_file_path))
         metadata = Metadata(file_path=metadata_file_path)
         logger = setup_logger()
         if metadata.validate():
@@ -278,11 +285,11 @@ def get_files_based_on_identifiers(conn, identifiers_list):
         idents = [line.rstrip() for line in ifh]
 
     # Right now I believe only derived identifiers are necessary but I would rather include other tables if specified.
-    tables = [tables.sequence, tables.alignment, tables.derived]
+    tabletypes = [tables.sequence, tables.alignment, tables.derived]
     desired_files = []
-    for t in tables:
+    for t in tabletypes:
         query = db.select([t.c.file_url]) \
-                .filter(t.c.identifier.in_([idents]))
+                .where(t.c.identifier.in_(idents))
         result_proxy = conn.execute(query)
         # Iterate through records and add files
         for row in result_proxy:
@@ -299,6 +306,8 @@ def get_metadata_file(base_dir, dmz_path, metadata_sheet):
     """
     log('INFO', "Extracting metadata file from base: {0}".format(base_dir))
     file_list = os.listdir(base_dir)
+    # Some files were gzip-compressed before archiving.  Unextract so that "get_archive_type" can catch these
+    file_list = [gunzip_file(filename, base_dir) for filename in file_list]
     metadata_f = False
     dtype = DataArchive()
     dtype = dtype.get_archive_type(data_path = base_dir)
@@ -306,6 +315,7 @@ def get_metadata_file(base_dir, dmz_path, metadata_sheet):
         for filename in file_list:
             if "EXPmeta" in filename:
                 metadata_f = os.path.normpath(base_dir+"/"+filename)
+                break
     elif dtype == "mex":
         metadata_fetch = "{}/get_sample_by_file/nemo_get_metadata_for_file.py -s {} ".format(config.get("paths", "nemo_scripts_bin"), metadata_sheet)
         output_path = os.path.normpath(base_dir + "/" + "EXPmeta_generated.json")
@@ -313,7 +323,6 @@ def get_metadata_file(base_dir, dmz_path, metadata_sheet):
         #not using subroutine as we might need to change how we run the command once the script is finalized by Shaun
         metadata_cmd = subprocess.call(metadata_cmd, shell = True)
         metadata_f = output_path
-    log('INFO', "Got metadata file: {0}".format(metadata_f))
     return metadata_f
 
 def get_organism_id(metadata_path):
@@ -374,6 +383,21 @@ def get_tar_paths_from_manifest(lines):
     desired_files = filter(is_good_file, files)
     # Manifest file paths were relative to a specific directory, so add the directory back
     return [os.path.join(release_dir, f) for f in desired_files]
+
+def gunzip_file(gzip_file, base_dir):
+    """Run "gunzip" on a file and return the extracted filename."""
+    full_gzip_file = os.path.join(base_dir, gzip_file)
+    if not gzip_file.endswith(".gz"):
+        return gzip_file
+    gunzip_file = full_gzip_file.replace(".gz", "")
+    with gzip.open(full_gzip_file, 'rb') as f_in:
+        with open(gunzip_file, 'wb') as f_out:
+            shutil.copyfileobj(f_in, f_out)
+    # Now that file is extracted.  Remove file
+    os.remove(full_gzip_file)
+
+    return os.path.basename(gunzip_file)
+
 
 def log(level, msg):
     print("{0}: {1}".format(level, msg),  flush=True)
