@@ -407,7 +407,7 @@ def setup_logger():
 
 def setup_mysql(host, database, user, pw):
     """Connect to MySQL and return database object."""
-    engine = db.create_engine('mysql+mysqldb://{}:{}@{}:3306/{}'.format(user, pw, host, database))
+    engine = db.create_engine('mysql+pymysql://{}:{}@{}:3306/{}'.format(user, pw, host, database))
     tables.create_tables(engine)
     return engine.connect()
 
