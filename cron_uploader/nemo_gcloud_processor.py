@@ -64,6 +64,12 @@ def main():
         metadata.add_field_value('default_plot_type', '')
         metadata.add_field_value('is_public', '1')
 
+        # Populates empty fields from GEO (if GEO GSE ID was given)
+        try:
+            metadata.populate_from_geo()
+        except KeyError:
+            log('WARN', 'Unable to process GEO ID.  Please check it and try again.')
+
         # hack for annotation source currently until NCBI is supported
         annot_release = metadata.get_field_value('annotation_release_number')
         if isinstance(annot_release, dict):
