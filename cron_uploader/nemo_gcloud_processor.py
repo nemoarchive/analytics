@@ -15,20 +15,31 @@ export PYTHONPATH=$HOME/git/gEAR/lib:$PYTHONPATH
 
 """
 
-import argparse
-import os
-import json
-from gear.metadata import Metadata
-import sys
+import argparse, json, os, sys
+import datetime
 import shutil
+import subprocess
 import uuid
 
+import configparser
+conf_loc = os.path.join(os.path.dirname(__file__), '.conf.ini')
+if not os.path.isfile(conf_loc):
+    sys.exit("Config file could not be found at {}".format(conf_loc))
+config = configparser.ConfigParser()
+config.read(conf_loc)
+
+# Read gEAR library modules
+sys.path.append(os.path.join(config.get("paths", "gear_dir"), "lib"))
+from gear.metadata import Metadata
+
 from google.cloud import storage
-gcloud_project = 'nemo-analytics'
-gcloud_bucket = 'nemo-analytics-incoming'
-processing_directory = '/tmp'
-destination_path = '/home/jorvis/git/gEAR/www/datasets'
-dataset_owner_id = 487
+GCLOUD_PROJECT = config.get("gcloud", "project")
+GCLOUD_BUCKET = config.get("gcloud", "bucket")
+
+PROCESSING_DIRECTORY = config.get("paths", "processing_dir")
+DESTINATION_PATH = config.get("paths", "dataset_dest")
+DATASET_OWNER_ID = config.get("metadata", "dataset_owner_id")
+DEFAULT_ANNOT_RELEASE_NUM = config.get("metadata", "annot_release_num")
 
 def main():
     parser = argparse.ArgumentParser( description='NeMO data processor for gEAR')
@@ -40,8 +51,8 @@ def main():
     if args.skip_ids:
         ids_to_skip = args.skip_ids.split(',')
 
-    sclient = storage.Client(project=gcloud_project)
-    bucket = storage.bucket.Bucket(client=sclient, name=gcloud_bucket)
+    sclient = storage.Client(project=GCLOUD_PROJECT)
+    bucket = storage.bucket.Bucket(client=sclient, name=GCLOUD_BUCKET)
 
     h5s = get_bucket_h5_list(sclient, bucket)
 
@@ -50,15 +61,15 @@ def main():
 
         if dataset_id in ids_to_skip:
             continue
-        
+
         download_data_for_processing(bucket, dataset_id)
 
-        metadata_path = "{0}/{1}.json".format(processing_directory, dataset_id)
-        h5ad_path = "{0}/{1}.h5ad".format(processing_directory, dataset_id)
-        
+        metadata_path = "{0}/{1}.json".format(PROCESSING_DIRECTORY, dataset_id)
+        h5ad_path = "{0}/{1}.h5ad".format(PROCESSING_DIRECTORY, dataset_id)
+
         metadata = Metadata(file_path=metadata_path)
         metadata.add_field_value('dataset_uid', dataset_id)
-        metadata.add_field_value('owner_id', dataset_owner_id)
+        metadata.add_field_value('owner_id', DATASET_OWNER_ID)
         metadata.add_field_value('schematic_image', '')
         metadata.add_field_value('share_uid', str(uuid.uuid4()))
         metadata.add_field_value('default_plot_type', '')
@@ -74,26 +85,26 @@ def main():
         annot_release = metadata.get_field_value('annotation_release_number')
         if isinstance(annot_release, dict):
             if annot_release['value'].startswith('hg'):
-                annot_release['value'] = 92
+                annot_release['value'] = DEFAULT_ANNOT_RELEASE_NUM
         else:
             if annot_release.startswith('hg'):
-                annot_release = 92
+                annot_release = DEFAULT_ANNOT_RELEASE_NUM
 
         metadata.save_to_mysql(status='completed')
 
         # place the files where they go on the file system to be live in gEAR
-        shutil.move(metadata_path, "{0}/".format(destination_path))
-        shutil.move(h5ad_path, "{0}/".format(destination_path))
+        shutil.move(metadata_path, "{0}/".format(DESTINATION_PATH))
+        shutil.move(h5ad_path, "{0}/".format(DESTINATION_PATH))
 
         # remove files from bucket
         for extension in ['h5ad', 'json']:
             blob = bucket.blob("{0}.{1}".format(dataset_id, extension))
             blob.delete()
-    
+
 
 def download_data_for_processing(bucket, dataset_id):
     for extension in ['h5ad', 'json']:
-        path = "{0}/{1}.{2}".format(processing_directory, dataset_id, extension)
+        path = "{0}/{1}.{2}".format(PROCESSING_DIRECTORY, dataset_id, extension)
         blob = bucket.blob("{0}.{1}".format(dataset_id, extension))
         log('INFO', "Downloading file: {0}".format("{0}.{1}".format(dataset_id, extension)))
         blob.download_to_filename(path)
@@ -106,7 +117,7 @@ def get_bucket_h5_list(sclient, bucket):
             h5s.append(blob.name)
 
     return h5s
-    
+
 def log(level, msg):
     print("{0}: {1}".format(level, msg),  flush=True)
 
