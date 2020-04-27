@@ -62,11 +62,15 @@ def main():
         if dataset_id in ids_to_skip:
             continue
 
+        h5_blob = bucket.blob("{0}.h5ad".format(dataset_id))
+
+        log("INFO: Started processing dataset_id:{0}".format(dataset_id))
         download_data_for_processing(bucket, dataset_id)
 
         metadata_path = "{0}/{1}.json".format(PROCESSING_DIRECTORY, dataset_id)
         h5ad_path = "{0}/{1}.h5ad".format(PROCESSING_DIRECTORY, dataset_id)
 
+        log("INFO: Parsing metadata for dataset_id:{0}".format(dataset_id))
         metadata = Metadata(file_path=metadata_path)
         metadata.add_field_value('dataset_uid', dataset_id)
         metadata.add_field_value('owner_id', DATASET_OWNER_ID)
@@ -90,11 +94,21 @@ def main():
             if annot_release.startswith('hg'):
                 annot_release = DEFAULT_ANNOT_RELEASE_NUM
 
-        metadata.save_to_mysql(status='completed')
+        try:
+            metadata.save_to_mysql(status='completed')
+            log('INFO', "Saved metadata to database for dataset_id:{0}".format(dataset_id))
+        except:
+            log('ERROR', "Failed to save metadata to database for dataset_id:{0}".format(dataset_id))
+            continue
 
         # place the files where they go on the file system to be live in gEAR
-        shutil.move(metadata_path, "{0}/".format(DESTINATION_PATH))
-        shutil.move(h5ad_path, "{0}/".format(DESTINATION_PATH))
+        try:
+            shutil.move(metadata_path, "{0}/".format(DESTINATION_PATH))
+            shutil.move(h5ad_path, "{0}/".format(DESTINATION_PATH))
+            log('INFO', "Successfully migrated datafiles for dataset_id:{0}".format(dataset_id))
+        except:
+            log('ERROR', "Failed to migrate datafiles for dataset_id:{0}".format(dataset_id))
+            continue
 
         # remove files from bucket
         for extension in ['h5ad', 'json']:
