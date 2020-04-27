@@ -55,6 +55,7 @@ def main():
     bucket = storage.bucket.Bucket(client=sclient, name=GCLOUD_BUCKET)
 
     h5s = get_bucket_h5_list(sclient, bucket)
+    log('INFO', "There are {0} H5AD files to process".format(len(h5s)))
 
     for h5 in h5s:
         dataset_id = h5.replace('.h5ad', '')
@@ -133,7 +134,7 @@ def get_bucket_h5_list(sclient, bucket):
     return h5s
 
 def log(level, msg):
-    print("{0}: {1}".format(level, msg),  flush=True)
+    print("{0} - {1}: {2}".format(level, datetime.datetime.now(), msg),  flush=True)
 
 def run_command(cmd):
     log("INFO", "Running command: {0}".format(cmd))
