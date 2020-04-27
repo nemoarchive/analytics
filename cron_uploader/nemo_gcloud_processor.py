@@ -12,6 +12,19 @@ Test commands:
 export PYTHONPATH=$HOME/git/gEAR/lib:$PYTHONPATH
 ./nemo_gcloud_processor.py
 
+Depends on a .conf.ini file in the same directory as this script with the following entries:
+
+[paths]
+dataset_processing_log=/home/jorvis/logs/nemo_gcloud_processor.log
+gear_dir = /home/jorvis/git/gEAR
+processing_dir = /tmp
+dataset_dest = /home/jorvis/git/gEAR/www/datasets
+
+[metadata]
+dataset_owner_id = 1
+annot_release_num = 92
+
+Other entries can be there, but these are all that this script requires.
 
 """
 
@@ -40,6 +53,8 @@ PROCESSING_DIRECTORY = config.get("paths", "processing_dir")
 DESTINATION_PATH = config.get("paths", "dataset_dest")
 DATASET_OWNER_ID = config.get("metadata", "dataset_owner_id")
 DEFAULT_ANNOT_RELEASE_NUM = config.get("metadata", "annot_release_num")
+LOG_FH = open(config.get("paths", "dataset_processing_log"), 'a')
+
 
 def main():
     parser = argparse.ArgumentParser( description='NeMO data processor for gEAR')
@@ -134,7 +149,7 @@ def get_bucket_h5_list(sclient, bucket):
     return h5s
 
 def log(level, msg):
-    print("{0} - {1}: {2}".format(level, datetime.datetime.now(), msg),  flush=True)
+    print("{0} - {1}: {2}".format(level, datetime.datetime.now(), msg), flush=True, file=LOG_FH)
 
 def run_command(cmd):
     log("INFO", "Running command: {0}".format(cmd))
