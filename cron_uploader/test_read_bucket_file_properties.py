@@ -39,8 +39,6 @@ def main():
     blob.reload()
     blob_metadata(blob)
     
-
-    
 def blob_metadata(blob):
     """Prints out a blob's metadata."""
 
