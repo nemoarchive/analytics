@@ -25,7 +25,6 @@ import datetime
 import uuid
 import pandas
 import tarfile, gzip
-import ntpath
 import csv
 import itertools
 import subprocess
@@ -98,7 +97,7 @@ def main():
             log("INFO", "Reading all qualifying files from database")
             files_pending = get_tar_paths_from_database(conn)
         conn.close()
-        # Phasing out reading from logfile
+        # SAdkins - Phasing out reading from logfile
         #files_pending = get_datasets_to_process(args.input_log_base, args.output_base, PROCESSED_LOGFILE)
 
     for file_path in files_pending:
@@ -108,6 +107,7 @@ def main():
             continue
         dataset_id = uuid.uuid4()
         dataset_dir = extract_dataset(file_path, args.output_base)
+
         # Load metadata from spreadsheet
         metadata_file_path = get_metadata_file(dataset_dir, file_path, args.metadata_xls)
         if not metadata_file_path:
@@ -117,6 +117,8 @@ def main():
             log('WARN', "Metadata file {} is empty... skipping".format(metadata_file_path))
             continue
         log('INFO', "Got metadata file: {0}".format(metadata_file_path))
+
+        # Validate metadata against gEAR's validator
         metadata = Metadata(file_path=metadata_file_path)
         logger = setup_logger()
         if metadata.validate():
@@ -129,7 +131,16 @@ def main():
                 organism_id = get_gear_organism_id(str(organism_taxa))
                 if organism_id == -1:
                     raise
-                h5_path, is_en = convert_to_h5ad(dataset_dir, dataset_id, args.output_base)
+
+                # If dataset directory has h5ad file, skip that step
+                file_list = os.listdir(dataset_dir)
+                h5_path = None
+                for f in file_list:
+                    if f.endswith(".h5ad"):
+                        h5_path = f
+                if not h5_path:
+                    h5_path, is_en = convert_to_h5ad(dataset_dir, dataset_id, args.output_base)
+
                 ensure_ensembl_index(h5_path, organism_id, is_en)
                 logger.info(file_path, extra={"dataset_id":dataset_id, "status": h5_path})
                 log('INFO', "Uploading {} to GCP bucket".format(h5_path))
@@ -157,9 +168,8 @@ def convert_to_h5ad(dataset_dir, dataset_id, output_dir):
     is_en = False
     data_archive = DataArchive()
     dtype = data_archive.get_archive_type(data_path = dataset_dir)
-    #filename = ntpath.basename(os.path.splitext(dataset_dir)[0])
     filename = str(dataset_id)
-    outdir_name = os.path.normpath(output_dir + "/" + filename + ".h5ad")
+    outdir_name = os.path.join(output_dir, filename + ".h5ad")
     h5AD = None
     if dtype == "3tab":
         h5AD, is_en = data_archive.read_3tab_files(data_path = dataset_dir)
@@ -215,8 +225,8 @@ def extract_dataset(input_file_path, output_base):
     tar = tarfile.open(input_file_path)
     tar.extractall(path = output_base)
     tar.close()
-    tar_name = ntpath.basename(input_file_path).split('.',1)[0]
-    tar_path = os.path.normpath(output_base+"/"+tar_name)
+    tar_name = os.path.basename(input_file_path).split('.',1)[0]
+    tar_path = os.path.join(output_base, tar_name)
     if not os.path.isdir(tar_path):
         raise Exception("Path returned was incorrect or extraction failed: {0}".format(input_file_path))
     return tar_path
@@ -269,7 +279,7 @@ def get_datasets_to_process(base_dir, output_base, processed_log):
         read_log_file = pandas.read_csv(logfile, sep="\t", header=0)
         hold_relevant_entries = read_log_file.loc[read_log_file['Type'].upper().isin(formats)]
         for entry in hold_relevant_entries.index:
-            tar_path = os.path.normpath(hold_relevant_entries['Output Dir'][entry] + "/" + hold_relevant_entries['Output file'][entry])
+            tar_path = os.path.join(hold_relevant_entries['Output Dir'][entry], hold_relevant_entries['Output file'][entry])
             if not processed_ds['Processed_Files'].str.contains(tar_path).any():
                 paths_to_return.append(tar_path)
     return paths_to_return
@@ -308,22 +318,25 @@ def get_metadata_file(base_dir, dmz_path, metadata_sheet):
     file_list = os.listdir(base_dir)
     # Some files were gzip-compressed before archiving.  Unextract so that "get_archive_type" can catch these
     file_list = [gunzip_file(filename, base_dir) for filename in file_list]
-    metadata_f = False
     dtype = DataArchive()
     dtype = dtype.get_archive_type(data_path = base_dir)
     if dtype == "3tab":
         for filename in file_list:
             if "EXPmeta" in filename:
-                metadata_f = os.path.normpath(base_dir+"/"+filename)
-                break
+                return os.path.join(base_dir, filename)
+    elif dtype == "h5ad":
+        for filename in file_list:
+            if filename.endswith(".json"):
+                return os.path.join(base_dir, filename)
     elif dtype == "mex":
         metadata_fetch = "{}/get_sample_by_file/nemo_get_metadata_for_file.py -s {} ".format(config.get("paths", "nemo_scripts_bin"), metadata_sheet)
-        output_path = os.path.normpath(base_dir + "/" + "EXPmeta_generated.json")
+        output_path = os.path.join(base_dir, "EXPmeta_generated.json")
         metadata_cmd ="python3 "+ metadata_fetch + " -i "+ dmz_path + " -o " + output_path
         #not using subroutine as we might need to change how we run the command once the script is finalized by Shaun
         metadata_cmd = subprocess.call(metadata_cmd, shell = True)
-        metadata_f = output_path
-    return metadata_f
+        return output_path
+    # Did not find metadata
+    return False
 
 def get_organism_id(metadata_path):
     with open(metadata_path) as json_file:
