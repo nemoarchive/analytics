@@ -12,6 +12,19 @@ Test commands:
 export PYTHONPATH=$HOME/git/gEAR/lib:$PYTHONPATH
 ./nemo_gcloud_processor.py
 
+Depends on a .conf.ini file in the same directory as this script with the following entries:
+
+[paths]
+dataset_processing_log=/home/jorvis/logs/nemo_gcloud_processor.log
+gear_dir = /home/jorvis/git/gEAR
+processing_dir = /tmp
+dataset_dest = /home/jorvis/git/gEAR/www/datasets
+
+[metadata]
+dataset_owner_id = 1
+annot_release_num = 92
+
+Other entries can be there, but these are all that this script requires.
 
 """
 
@@ -40,6 +53,8 @@ PROCESSING_DIRECTORY = config.get("paths", "processing_dir")
 DESTINATION_PATH = config.get("paths", "dataset_dest")
 DATASET_OWNER_ID = config.get("metadata", "dataset_owner_id")
 DEFAULT_ANNOT_RELEASE_NUM = config.get("metadata", "annot_release_num")
+LOG_FH = open(config.get("paths", "dataset_processing_log"), 'a')
+
 
 def main():
     parser = argparse.ArgumentParser( description='NeMO data processor for gEAR')
@@ -55,6 +70,7 @@ def main():
     bucket = storage.bucket.Bucket(client=sclient, name=GCLOUD_BUCKET)
 
     h5s = get_bucket_h5_list(sclient, bucket)
+    log('INFO', "There are {0} H5AD files to process".format(len(h5s)))
 
     for h5 in h5s:
         dataset_id = h5.replace('.h5ad', '')
@@ -62,11 +78,15 @@ def main():
         if dataset_id in ids_to_skip:
             continue
 
+        h5_blob = bucket.blob("{0}.h5ad".format(dataset_id))
+
+        log("INFO: Started processing dataset_id:{0}".format(dataset_id))
         download_data_for_processing(bucket, dataset_id)
 
         metadata_path = "{0}/{1}.json".format(PROCESSING_DIRECTORY, dataset_id)
         h5ad_path = "{0}/{1}.h5ad".format(PROCESSING_DIRECTORY, dataset_id)
 
+        log("INFO: Parsing metadata for dataset_id:{0}".format(dataset_id))
         metadata = Metadata(file_path=metadata_path)
         metadata.add_field_value('dataset_uid', dataset_id)
         metadata.add_field_value('owner_id', DATASET_OWNER_ID)
@@ -74,6 +94,12 @@ def main():
         metadata.add_field_value('share_uid', str(uuid.uuid4()))
         metadata.add_field_value('default_plot_type', '')
         metadata.add_field_value('is_public', '1')
+
+        # Populates empty fields from GEO (if GEO GSE ID was given)
+        try:
+            metadata.populate_from_geo()
+        except KeyError:
+            log('WARN', 'Unable to process GEO ID.  Please check it and try again.')
 
         # hack for annotation source currently until NCBI is supported
         annot_release = metadata.get_field_value('annotation_release_number')
@@ -84,11 +110,21 @@ def main():
             if annot_release.startswith('hg'):
                 annot_release = DEFAULT_ANNOT_RELEASE_NUM
 
-        metadata.save_to_mysql(status='completed')
+        try:
+            metadata.save_to_mysql(status='completed')
+            log('INFO', "Saved metadata to database for dataset_id:{0}".format(dataset_id))
+        except:
+            log('ERROR', "Failed to save metadata to database for dataset_id:{0}".format(dataset_id))
+            continue
 
         # place the files where they go on the file system to be live in gEAR
-        shutil.move(metadata_path, "{0}/".format(DESTINATION_PATH))
-        shutil.move(h5ad_path, "{0}/".format(DESTINATION_PATH))
+        try:
+            shutil.move(metadata_path, "{0}/".format(DESTINATION_PATH))
+            shutil.move(h5ad_path, "{0}/".format(DESTINATION_PATH))
+            log('INFO', "Successfully migrated datafiles for dataset_id:{0}".format(dataset_id))
+        except:
+            log('ERROR', "Failed to migrate datafiles for dataset_id:{0}".format(dataset_id))
+            continue
 
         # remove files from bucket
         for extension in ['h5ad', 'json']:
@@ -113,7 +149,7 @@ def get_bucket_h5_list(sclient, bucket):
     return h5s
 
 def log(level, msg):
-    print("{0}: {1}".format(level, msg),  flush=True)
+    print("{0} - {1}: {2}".format(level, datetime.datetime.now(), msg), flush=True, file=LOG_FH)
 
 def run_command(cmd):
     log("INFO", "Running command: {0}".format(cmd))

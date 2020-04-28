@@ -18,6 +18,9 @@ export PATH=/usr/local/common/Python-3.7.2/bin:$PATH
 # 3-tab
 /usr/local/common/Python-3.7.2/bin/python3 ~/git/analytics/cron_uploader/nemo_upload_crawler.py -ilb /local/scratch/achatterjee/Test_New/ -ob ./
 
+## log file root to traditionally search is currently here:
+/local/projects-t3/NEMO/incoming/brain/bundle_jobs
+
 """
 
 import argparse, json, os, sys
