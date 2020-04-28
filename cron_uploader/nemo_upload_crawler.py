@@ -119,7 +119,7 @@ def main():
         if not os.stat(metadata_file_path).st_size:
             log('WARN', "Metadata file {} is empty... skipping".format(metadata_file_path))
             continue
-        log('INFO', "Got metadata file: {0}".format(metadata_file_path))
+        log('DEBUG', "Got metadata file: {0}".format(metadata_file_path))
 
         # Validate metadata against gEAR's validator
         metadata = Metadata(file_path=metadata_file_path)
@@ -135,6 +135,7 @@ def main():
                 if organism_id == -1:
                     raise
 
+                log('DEBUG', "Organism ID is {}".format(organism_id))
                 # If dataset directory has h5ad file, skip that step
                 file_list = os.listdir(dataset_dir)
                 h5_path = None
@@ -149,7 +150,9 @@ def main():
                 log('INFO', "Uploading {} to GCP bucket".format(h5_path))
                 upload_to_cloud(bucket, h5_path, metadata_json_path)
             except:
-                log('ERROR', "Failed to process file:{0}".format(file_path))
+                log('ERROR', "Failed to process file:{0}. Error is below.".format(file_path))
+                exctype, value = sys.exc_info()[:2]
+                log('ERROR', "{} - {}".format(exctype, value))
                 logger.info(file_path, extra={"dataset_id":dataset_id, "status":"FAILED"})
         else:
             log('ERROR', "Metadata file is NOT valid: {0}".format(metadata_file_path))
@@ -168,21 +171,26 @@ def convert_to_h5ad(dataset_dir, dataset_id, output_dir):
 
     TBD: Error with writing to file.
     """
+    log('DEBUG', "H5AD to be created")
     is_en = False
     data_archive = DataArchive()
     dtype = data_archive.get_archive_type(data_path = dataset_dir)
     filename = str(dataset_id)
     outdir_name = os.path.join(output_dir, filename + ".h5ad")
     h5AD = None
-    if dtype == "3tab":
-        h5AD, is_en = data_archive.read_3tab_files(data_path = dataset_dir)
-    elif dtype == "mex":
-        h5AD, is_en = data_archive.read_mex_files(data_path = dataset_dir)
-
-    else:
-        raise Exception("Undetermined Format: {0}".format(dtype))
-    if h5AD != None:
+    # If errors occur in gEAR's parsing steps propagate upwards
+    try:
+        if dtype == "3tab":
+                h5AD, is_en = data_archive.read_3tab_files(data_path = dataset_dir)
+        elif dtype == "mex":
+                h5AD, is_en = data_archive.read_mex_files(data_path = dataset_dir)
+        else:
+            raise Exception("Undetermined Format: {0}".format(dtype))
+    except:
+        raise
+    if h5AD:
         h5AD.write_h5ad(output_path = outdir_name, gear_identifier = dataset_id)
+
     return outdir_name, is_en
 
 def ensure_ensembl_index(h5_path, organism_id, is_en):
@@ -223,16 +231,18 @@ def extract_dataset(input_file_path, output_base):
                                                    ./DLPFCcon322polyAgeneLIBD_EXPmeta.json
            Returns: /path/to/DLPFCcon322polyAgeneLIBD
     """
-    log('INFO', "Extracting dataset at path: {0}".format(input_file_path))
+    log('DEBUG', "Extracting dataset at path: {0}".format(input_file_path))
 
     tar = tarfile.open(input_file_path)
+    sample_file = tar.next().name   # Get path of first member so we can extract directory later
+    if not sample_file:
+        raise Exception("Tar file {} appears to be empty".format(input_file_path))
     tar.extractall(path = output_base)
     tar.close()
-    tar_name = os.path.basename(input_file_path).split('.',1)[0]
-    tar_path = os.path.join(output_base, tar_name)
-    if not os.path.isdir(tar_path):
-        raise Exception("Path returned was incorrect or extraction failed: {0}".format(input_file_path))
-    return tar_path
+
+    full_sample_file = os.path.join(output_base, sample_file)
+    tar_directory = os.path.dirname(full_sample_file)
+    return tar_directory
 
 def get_gear_organism_id(sample_attributes):
     """
