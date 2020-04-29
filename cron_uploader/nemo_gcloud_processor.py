@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/opt/bin/python3
 
 """
 
@@ -76,6 +76,7 @@ def main():
         dataset_id = h5.replace('.h5ad', '')
 
         if dataset_id in ids_to_skip:
+            log("INFO: Skipping dataset_id:{0} because it is in the skip list".format(dataset_id))
             continue
 
         h5_blob = bucket.blob("{0}.h5ad".format(dataset_id))
