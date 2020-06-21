@@ -1,0 +1,26 @@
+# Edit these fields and copy file to .conf.ini to use
+
+[paths]
+cron_upload_log=/path/to/cron_upload.status.log
+gear_dir=/path/to/gEAR/dir
+nemo_scripts_bin=/path/to/nemo_bin
+dataset_dest=/path/to/datasets
+processing_dir=/tmp
+release_dir=/path/to/nemoarchive/release
+http_path=http://data.nemoarchive.org
+ident_api_path=/path/to/nemo-identifiers-api/app
+
+[gcloud]
+project=<BUCKET_PROJ>
+bucket=<BUCKET_NAME>
+
+[metadata]
+dataset_owner_id=497
+annot_release_num=92
+
+[mysql]
+# If 'localhost' is specified, MySQL ignores port parameter
+ip=localhost
+db=<DB_NAME>
+user=<USER>
+pass=<PASS>
