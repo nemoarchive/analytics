@@ -78,7 +78,6 @@ def main():
     sclient = storage.Client(project=GCLOUD_PROJECT)
     bucket = storage.bucket.Bucket(client=sclient, name=GCLOUD_BUCKET)
 
-    # TODO: Eventually add from identifiers database
     if args.input_directory:
         log("INFO", "Reading from input directory")
         files_pending = get_tar_paths_from_dir(args.input_directory)
@@ -139,9 +138,10 @@ def main():
                 # If dataset directory has h5ad file, skip that step
                 file_list = os.listdir(dataset_dir)
                 h5_path = None
+                is_en = False   # assume ENSEMBL IDs are not present if h5ad was already passed to us
                 for f in file_list:
                     if f.endswith(".h5ad"):
-                        h5_path = f
+                        h5_path = "{}/{}".format(dataset_dir, f)
                 if not h5_path:
                     h5_path, is_en = convert_to_h5ad(dataset_dir, dataset_id, args.output_base)
 
@@ -391,7 +391,7 @@ def get_tar_paths_from_dir(base_dir):
 
 def get_tar_paths_from_manifest(lines):
     """Iterate through manifest filehandle to retrieve tar files that fit the formats desired."""
-    extensions = ['.mex.tar.gz', '.tab.analysis.tar', '.tab.counts.tar']
+    extensions = ['.mex.tar.gz', '.tab.analysis.tar', '.tab.counts.tar', '.h5ad.tar']
 
     def is_good_file(filename):
         """Does file end with a desired file extension?"""
