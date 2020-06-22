@@ -81,7 +81,7 @@ def main():
 
         h5_blob = bucket.blob("{0}.h5ad".format(dataset_id))
 
-        log('INFO' "Started processing dataset_id:{0}".format(dataset_id))
+        log('INFO', "Started processing dataset_id:{0}".format(dataset_id))
         download_data_for_processing(bucket, dataset_id)
 
         metadata_path = "{0}/{1}.json".format(PROCESSING_DIRECTORY, dataset_id)
