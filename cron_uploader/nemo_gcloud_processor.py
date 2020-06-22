@@ -98,6 +98,8 @@ def main():
 
         # Populates empty fields from GEO (if GEO GSE ID was given)
         if metadata.get_field_value('geo_accession'):
+            #log('DEBUG', "Got this value for geo_accession: {0}".format(metadata.get_field_value('geo_accession')))
+            #log('DEBUG', "geo_accession is a {0}".format(type(metadata.get_field_value('geo_accession'))))
             try:
                 metadata.populate_from_geo()
             except KeyError:
