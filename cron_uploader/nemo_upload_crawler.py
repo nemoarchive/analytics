@@ -70,7 +70,7 @@ def main():
     inputtype.add_argument('-m', '--manifest_file', help='Path to a file manifest containing `ls -l` contents')
     inputtype.add_argument('-db', '--database', help="Get all qualifying files out of database.  Credentials provide by config file", action='store_true')
     parser.add_argument('-ob', '--output_base', type=str, required=True, help='Path to a local output directory where files can be written while processing' )
-    parser.add_argument('-s', '--metadata_xls', required=True, help='Path to a Excel-formatted spreadsheet of metadata')
+    parser.add_argument('-s', '--metadata_xls', help='Path to a Excel-formatted spreadsheet of metadata')
     parser.add_argument('--dry_run', help="Run only up to the point of determining which files will be extracted", action="store_true")
     args = parser.parse_args()
 
@@ -181,9 +181,9 @@ def convert_to_h5ad(dataset_dir, dataset_id, output_dir):
     # If errors occur in gEAR's parsing steps propagate upwards
     try:
         if dtype == "3tab":
-                h5AD, is_en = data_archive.read_3tab_files(data_path = dataset_dir)
+            h5AD, is_en = data_archive.read_3tab_files(data_path = dataset_dir)
         elif dtype == "mex":
-                h5AD, is_en = data_archive.read_mex_files(data_path = dataset_dir)
+            h5AD, is_en = data_archive.read_mex_files(data_path = dataset_dir)
         else:
             raise Exception("Undetermined Format: {0}".format(dtype))
     except:
@@ -237,7 +237,7 @@ def extract_dataset(input_file_path, output_base):
     sample_file = tar.next().name   # Get path of first member so we can extract directory later
     if not sample_file:
         raise Exception("Tar file {} appears to be empty".format(input_file_path))
-    tar.extractall(path = output_base)
+    #tar.extractall(path = output_base)
     tar.close()
 
     full_sample_file = os.path.join(output_base, sample_file)
@@ -246,9 +246,9 @@ def extract_dataset(input_file_path, output_base):
 
 def get_gear_organism_id(sample_attributes):
     """
-    data_organism_id = {'id' : [1, 2, 3, 5],
-                        'label' : ['Mouse', 'Human', 'Zebrafish', 'Chicken'],
-                        'taxon_id' : [10090, 9606, 7955, 9031]
+    data_organism_id = {'id' : [1, 2, 3, 5, 8],
+                        'label' : ['Mouse', 'Human', 'Zebrafish', 'Chicken', 'Macaque'],
+                        'taxon_id' : [10090, 9606, 7955, 9031, 9544]
                         }
     """
     if sample_attributes.lower() in ["human", "homo sapiens","9606"]:
@@ -259,6 +259,8 @@ def get_gear_organism_id(sample_attributes):
         return 3
     if sample_attributes.lower() in ["chicken", "gallus gallus", "9031"]:
         return 5
+    #if sample_attributes.lower() in ["macaque", "macaca mulatta", "9544"]:
+    #    return 8
     log("ERROR", "Could not associate organism or taxon id {} with a gEAR organism ID".format(sample_attributes))
     return -1
 
@@ -342,6 +344,8 @@ def get_metadata_file(base_dir, dmz_path, metadata_sheet):
             if filename.endswith(".json"):
                 return os.path.join(base_dir, filename)
     elif dtype == "mex":
+        if not metadata_sheet:
+            raise Exception("ERROR: MEX files require metadata sheet (-s argument)")
         metadata_fetch = "{}/get_sample_by_file/nemo_get_metadata_for_file.py -s {} ".format(config.get("paths", "nemo_scripts_bin"), metadata_sheet)
         output_path = os.path.join(base_dir, "EXPmeta_generated.json")
         metadata_cmd ="python3 "+ metadata_fetch + " -i "+ dmz_path + " -o " + output_path
@@ -478,9 +482,3 @@ def upload_to_cloud(bucket, h5_path, metadata_json_path):
 if __name__ == '__main__':
     main()
     sys.exit()
-
-
-
-
-
-
