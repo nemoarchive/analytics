@@ -76,18 +76,18 @@ def main():
         dataset_id = h5.replace('.h5ad', '')
 
         if dataset_id in ids_to_skip:
-            log("INFO: Skipping dataset_id:{0} because it is in the skip list".format(dataset_id))
+            log('INFO', "Skipping dataset_id:{0} because it is in the skip list".format(dataset_id))
             continue
 
         h5_blob = bucket.blob("{0}.h5ad".format(dataset_id))
 
-        log("INFO: Started processing dataset_id:{0}".format(dataset_id))
+        log('INFO', "Started processing dataset_id:{0}".format(dataset_id))
         download_data_for_processing(bucket, dataset_id)
 
         metadata_path = "{0}/{1}.json".format(PROCESSING_DIRECTORY, dataset_id)
         h5ad_path = "{0}/{1}.h5ad".format(PROCESSING_DIRECTORY, dataset_id)
 
-        log("INFO: Parsing metadata for dataset_id:{0}".format(dataset_id))
+        log('INFO', "Parsing metadata for dataset_id:{0}".format(dataset_id))
         metadata = Metadata(file_path=metadata_path)
         metadata.add_field_value('dataset_uid', dataset_id)
         metadata.add_field_value('owner_id', DATASET_OWNER_ID)
@@ -97,10 +97,13 @@ def main():
         metadata.add_field_value('is_public', '1')
 
         # Populates empty fields from GEO (if GEO GSE ID was given)
-        try:
-            metadata.populate_from_geo()
-        except KeyError:
-            log('WARN', 'Unable to process GEO ID.  Please check it and try again.')
+        if metadata.get_field_value('geo_accession'):
+            #log('DEBUG', "Got this value for geo_accession: {0}".format(metadata.get_field_value('geo_accession')))
+            #log('DEBUG', "geo_accession is a {0}".format(type(metadata.get_field_value('geo_accession'))))
+            try:
+                metadata.populate_from_geo()
+            except KeyError:
+                log('WARN', 'Unable to process GEO ID.  Please check it and try again.')
 
         # hack for annotation source currently until NCBI is supported
         annot_release = metadata.get_field_value('annotation_release_number')
