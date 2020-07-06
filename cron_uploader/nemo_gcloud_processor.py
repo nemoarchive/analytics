@@ -10,6 +10,7 @@ This script reads data in the incoming bucket and does the following:
 Test commands:
 
 export PYTHONPATH=$HOME/git/gEAR/lib:$PYTHONPATH
+export GOOGLE_APPLICATION_CREDENTIALS=/usr/local/projects/nemo/nemo-analytics-service-key.json
 ./nemo_gcloud_processor.py
 
 Depends on a .conf.ini file in the same directory as this script with the following entries:
@@ -117,8 +118,8 @@ def main():
         try:
             metadata.save_to_mysql(status='completed')
             log('INFO', "Saved metadata to database for dataset_id:{0}".format(dataset_id))
-        except:
-            log('ERROR', "Failed to save metadata to database for dataset_id:{0}".format(dataset_id))
+        except Exception as err:
+            log('ERROR', "Failed to save metadata to database for dataset_id:{0} because: {1}".format(dataset_id, err))
             continue
 
         # place the files where they go on the file system to be live in gEAR
