@@ -17,11 +17,11 @@ NOTE: This process will change a bit when Shaun rolls out the updated ingesting 
 
 The 'incoming' directory tree root is:
 
-    /local/projects-t3/NEMO/incoming
+    /local/projects-t3/NEMO/public/incoming
 
 The diff file for incoming is generated Tuesday morning at 12:05 AM.  The diff filename will be in the format of ```<project>-YYYY-MM-DD.diff``` where \<project\> is either "BICCN", "BICCN", or "other".
 
-The script /local/devel/sadkins/nemo_bin/preprocess_nemo_bundles.py is run as user "nemo_dmz" on the "incoming" .diff file:
+The script /local/projects-t3/NEMO/bin/nemo_bin/preprocess_nemo_bundles.py is run as user "nemo_dmz" on the "incoming" .diff file:
 
 1. Perform QC checks
     1. Ensure files exist, have size, and do not have a .aspx file.  Some Aspera transfers may still be ongoing or were incomplete
@@ -53,7 +53,7 @@ The script /local/devel/sadkins/nemo_bin/preprocess_nemo_bundles.py is run as us
 
 The 'processed' directory tree root is:
 
-    /local/projects-t3/NEMO/processed
+    /local/projects-t3/NEMO/public/processed
 
 The output file in preprocess_nemo_files.py is passed into bundle_nemo_files.pl, which does the following:
 
@@ -81,7 +81,7 @@ The output file in preprocess_nemo_files.py is passed into bundle_nemo_files.pl,
 
 The 'DMZ' directory tree root is:
 
-    /local/projects-t3/NEMO/release (symlinked to /local/projects-t3/NEMO/dmz)
+    /local/projects-t3/NEMO/public/release (symlinked to /local/projects-t3/NEMO/dmz)
 
 The diff file for incoming is generated Thursday morning at 12:05 AM. The diff filename will be in the format of ```dmz-<project>-YYYY-MM-DD.diff``` where \<project\> is either "BICCC", "BICCN", or "other".
 
